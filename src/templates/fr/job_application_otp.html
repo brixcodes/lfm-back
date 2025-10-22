@@ -1,0 +1,48 @@
+{% extends "fr/partials/email_base.html" %}
+{% block title %}Code de Mise à Jour de Candidature{% endblock %}
+{% block head %}
+    {{ super() }}
+    <style type="text/css">
+        .important { color: #336699; }
+        .otp-code { 
+            background-color: #f0f8ff; 
+            padding: 15px; 
+            border: 2px solid #00843d; 
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .otp-code h3 {
+            margin: 0;
+            font-size: 24px;
+            letter-spacing: 3px;
+        }
+    </style>
+{% endblock %}
+{% block content %}
+
+    <table style="width:100%">
+        <tbody>
+            <tr>
+                <td>
+                    <div>
+                        <h2 style="color: #00843d;">Code de Mise à Jour de Candidature</h2>
+                        <p>Cher(e) {{candidate_name}},</p>
+                        <p>Vous avez demandé à mettre à jour votre candidature. Veuillez utiliser le code ci-dessous pour procéder à votre mise à jour :</p>
+                        
+                        <div class="otp-code">
+                            <h3 style="color: #00843d;">{{code}}</h3>
+                        </div>
+                        
+                        <p><strong>Numéro de Candidature :</strong> {{application_number}}</p>
+                        <p>Ce code expirera dans <span id="time-remaining">{{time}}</span> minutes.</p>
+                        
+                        <p><strong>Important :</strong> Ce code ne peut être utilisé qu'une seule fois. Si vous n'avez pas demandé cette mise à jour, veuillez ignorer cet e-mail.</p>
+                        
+                        <p style="margin-top: 30px;">Merci,<br>L'équipe {{app_name}}</p>
+                    </div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+{% endblock %}

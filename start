@@ -1,0 +1,13 @@
+#!/bin/bash
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+alembic upgrade head
+
+# If we do not use python-socketio, we can increase the worker process number here
+# https://python-socketio.readthedocs.io/en/latest/server.html#eventlet-with-gunicorn
+#uvicorn app.main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 
+
+uvicorn src.main:app --reload --env-file .env --host 0.0.0.0 --port 8000

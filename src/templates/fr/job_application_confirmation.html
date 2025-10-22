@@ -1,0 +1,42 @@
+{% extends "fr/partials/email_base.html" %}
+{% block title %}Confirmation de Candidature{% endblock %}
+{% block head %}
+    {{ super() }}
+    <style type="text/css">
+        .important { color: #336699; }
+        .application-number { 
+            background-color: #f0f8ff; 
+            padding: 10px; 
+            border-left: 4px solid #00843d; 
+            margin: 20px 0;
+        }
+    </style>
+{% endblock %}
+{% block content %}
+
+    <table style="width:100%">
+        <tbody>
+            <tr>
+                <td>
+                    <div>
+                        <h2 style="color: #00843d;">Confirmation de Candidature</h2>
+                        <p>Cher(e) {{candidate_name}},</p>
+                        <p>Merci pour votre intérêt à rejoindre notre équipe ! Nous avons bien reçu votre candidature.</p>
+                        
+                        <div class="application-number">
+                            <h3 style="color: #00843d; margin: 0;">Numéro de Candidature : {{application_number}}</h3>
+                        </div>
+                        
+                        <p><strong>Poste Sollicité :</strong> {{job_title}}</p>
+                        
+                        <p>Nous examinerons votre candidature et vous répondrons dans les prochains jours ouvrables. Veuillez conserver votre numéro de candidature pour référence future.</p>
+                        
+                        <p>Si vous devez mettre à jour des informations dans votre candidature, vous pouvez le faire en demandant un code de mise à jour en utilisant votre numéro de candidature et votre adresse e-mail.</p>
+                        
+                        <p style="margin-top: 30px;">Merci pour votre intérêt pour notre organisation,<br>L'équipe {{app_name}}</p>
+                    </div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+{% endblock %}

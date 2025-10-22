@@ -1,0 +1,25 @@
+{% extends "fr/partials/email_base.html" %}
+{% block title %}Index{% endblock %}
+{% block head %}
+    {{ super() }}
+    <style type="text/css">
+        .important { color: #336699; }
+    </style>
+{% endblock %}
+{% block content %}
+
+    <table style="width:100%">
+        <tbody>
+            <tr>
+                <td>
+                    <div >
+                        <h2 style="color: #00843d;">Welcome to {{app_name}}!</h2>
+                        <p>Hi there,</p>
+                        <p>We’re thrilled to have you onboard! Start exploring our platform and discover opportunities tailored just for you.</p>
+                        <p>If you have any questions, feel free to reach out to our support team.</p>
+                    </div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+{% endblock %}    

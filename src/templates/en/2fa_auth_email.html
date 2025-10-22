@@ -1,0 +1,19 @@
+{% extends "en/partials/email_base.html" %}
+{% block title %}Two-Factor Authentication{% endblock %}
+{% block head %}
+    {{ super() }}
+    <style type="text/css">
+        .important { color: #336699; }
+        .cta { color: #00843d; font-weight: bold; }
+        .footer { margin-top: 30px; color: #555555; font-size: 12px; }
+    </style>
+{% endblock %}
+{% block content %}
+    <h2 style="color: #00843d;">Two-Factor Authentication</h2>
+    <p>Hi there,</p>
+    <p>We received a request to log in to your account. To complete the login process, please use the code below:</p>
+    <h3 class="cta">{{code}}</h3>
+    <p>This code will expire in <strong>{{ time }}</strong> minutes, so be sure to enter it promptly.</p>
+    <p>If you didn't request this login, please <a href="mailto:support@afrolancer.com" style="color: #336699; text-decoration: none;">contact our support team</a> immediately or ignore this email.</p>
+    <p class="footer">Thank you,<br>The {{app_name}} Team</p>
+{% endblock %}

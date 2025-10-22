@@ -1,0 +1,30 @@
+{% extends "en/partials/email_base.html" %}
+{% block title %}Login Alert{% endblock %}
+{% block head %}
+    {{ super() }}
+    <style type="text/css">
+        
+    </style>
+{% endblock %}
+{% block content %}
+
+    <table style="width:100%">
+        <tbody>
+            <tr>
+                <td>
+                    <div >
+                        <h2 style="color: #00843d;">Login Alert</h2>
+                        <p>Hi there,</p>
+                        <p>We wanted to let you know that your account was successfully logged into on {{ device }}  at {{ time }} . If this was you, no further action is needed.    </p>
+
+                        <p>If you didn't attempt to log in, please contact our support team immediately and change your password for added security.</p>
+                        <p><em>Stay secure,</em></p>
+                        <p style="margin-top: 30px;">Thank you,<br>The {{app_name}} Team</p>
+                    </div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+
+{% endblock %}    
