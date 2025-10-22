@@ -1,0 +1,9 @@
+api.lafaom-mao.org {
+    reverse_proxy app:8000
+    header {
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+    }
+}
+# lk

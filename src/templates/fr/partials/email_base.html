@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        {% block head %}
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>{% block title %}{% endblock %} - {{app_name}}</title>
+
+            <style>
+
+                body {
+                    direction: ltr;
+                    font: small / 1.5 Arial, Helvetica, sans-serif;
+                    overflow-x: auto;
+                    overflow-y: hidden;
+                    position: relative;
+                    margin: 0;
+                }
+                a {
+                    color: #1ec96b
+                }
+    
+                u a {
+                    color: #1ec96b;
+                    font-size: inherit;
+                    font-family: inherit;
+                    font-weight: inherit;
+                    line-height: inherit
+                }
+    
+                h1,h2,h3, h4, h5,h6 {
+                    font-weight: 600;
+                    margin: 1rem 0
+                }
+    
+                p {
+                    line-height: 1.5;
+                    margin: 0 0 1em
+                }
+    
+                img {
+                    margin: 0 0 1rem;
+                    width: 100%
+                }
+            </style>
+        {% endblock %}
+        
+    </head>
+
+    <body>
+        <div 
+        style="background-color:#f0eef3;min-height:100%;margin:0;background-image:url('https://ci3.googleusercontent.com/meips/ADKq_NblAWvMQNYMq4jut1MlmtanEiEzcwLNn3fZjPj15GeHZEm32_U7Zedbj5zeolI7CowXFXIYgXyIgwnfXU2K2h8Q2EpLALpRVhPqjxRu1hAmSr1PCsJU46D-1iXxuYHUimfp3Dsl3_iEc9vtrHyfgPhGkgw8hpdTIqnELaRB=s0-d-e1-ft#https://storage.googleapis.com/sentryio-assets/img/email/sentry-subtle-randogeo-pattern-transparent.png');padding:1rem 0.25rem 2rem">
+    
+        <div  style="margin:0 auto;max-width:600px">
+            <div style="background:#1ec96b;padding:0.5rem 0;text-align:center">
+                <h1 style="color: white; margin: 8px 0">{{app_name}}</h1>
+            </div>
+            <div  style="background:#fff;font-size:1rem">
+                <table style="width:100%">
+                    <tbody>
+                        <tr>
+                            <td style="padding:0.5rem 1.5rem 1rem">
+                                {% block content %}
+        
+                                {% endblock %}
+                                <table
+                                    style="width:100%">
+                                    <tbody>
+                                        <tr>
+                                            <td>
+                                                <div>
+                                                    <p>&copy; 2025 {{app_name}} | Tous droits réservés.</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    </body>
+
+</html>

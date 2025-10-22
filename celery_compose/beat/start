@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -o errexit
+set -o nounset
+
+exec celery -A src.main.celery beat --schedule=/app/celerybeat/celerybeat-schedule  -l  info 

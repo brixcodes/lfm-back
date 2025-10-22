@@ -1,0 +1,7 @@
+#!/bin/bash
+
+set -o errexit
+set -o nounset
+
+exec celery -A src.main.celery worker -Q lafaom_default,lafaom_high_priority,lafaom_low_priority --loglevel=info
+
