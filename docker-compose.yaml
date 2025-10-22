@@ -6,68 +6,81 @@ x-app-base: &app-base
   volumes:
     - .:/app
   networks:
-    - database_network
-    - redis_network
+    - app_network
 
 services:
-  
+  # Base de données PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lafaom_db}
+      POSTGRES_USER: ${POSTGRES_USER:-lafaom_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lafaom_password}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lafaom_user} -d ${POSTGRES_DB:-lafaom_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis pour le cache et Celery
   redis:
     image: redis:7.0.8-alpine
     networks:
-      - redis_network
+      - app_network
+    restart: unless-stopped
 
-  celery_worker:
-    <<: *app-base
-    command: /start-celeryworker
-    depends_on:
-      - redis
-
-  celery_beat:
-    <<: *app-base
-    command: /start-celerybeat
-    depends_on:
-      - redis
-    volumes:
-      - .:/app
-      - celery-beat:/app/celerybeat
-
+  # Application principale
   app:
     <<: *app-base
     command: /start
     ports:
-      - "7051:8000"
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
-      - .:/app
       - app-uploads:/app/src/static/uploads
       - app-uploads-2:/app/uploads
-
-  # Nouveau service Caddy
-  caddy:
-    image: caddy:2-alpine
-    container_name: lafaom_caddy
     restart: unless-stopped
-    ports:
-      - "8080:80"
-      - "8443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - database_network
+
+  # Worker Celery
+  celery_worker:
+    <<: *app-base
+    command: /start-celeryworker
     depends_on:
-      - app
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  # Scheduler Celery Beat
+  celery_beat:
+    <<: *app-base
+    command: /start-celerybeat
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - celery-beat:/app/celerybeat
+    restart: unless-stopped
 
 volumes:
-    celery-beat:
-    app-uploads:
-    app-uploads-2:
-    caddy_data:
-    caddy_config:
+  postgres_data:
+  celery-beat:
+  app-uploads:
+  app-uploads-2:
 
 networks:
-  
-  database_network:
-    name: afrolancer_backend_database_network
-    external: true
-  redis_network:
+  app_network:
+    driver: bridge
