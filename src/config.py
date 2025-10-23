@@ -1,3 +1,4 @@
+import os
 from pydantic_settings import BaseSettings
 from pydantic import ConfigDict, model_validator,EmailStr, BeforeValidator,AnyUrl,computed_field,HttpUrl
 from typing import ClassVar, Literal,Annotated,Any
@@ -25,7 +26,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "La'akam"
     ENV: Literal["development", "staging", "production"] = "development"
     
-    DATABASE_URL: str = "postgresql://user:paÒssword@127.0.0.1:5432/test"
+    DATABASE_URL: str = os.getenv("DATABASE_URL")
     
     SECRET_KEY: str = secrets.token_urlsafe(32) 
     ALGORITHM: str = "HS256"

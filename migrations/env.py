@@ -41,9 +41,15 @@ target_metadata = SQLModel.metadata
 
 database_url = os.getenv("DATABASE_URL")
 if not database_url:
-    raise ValueError("DATABASE_URL environment variable is not set")
+    # Fallback to default from config if no environment variable is set
+    from src.config import settings
+    database_url = settings.DATABASE_URL
 
-config.set_main_option("sqlalchemy.url", database_url)
+# Convert async URL to sync URL for Alembic migrations
+# Replace postgresql+asyncpg:// with postgresql:// for synchronous operations
+sync_database_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+
+config.set_main_option("sqlalchemy.url", sync_database_url)
 
 
 def run_migrations_offline() -> None:
