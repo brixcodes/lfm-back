@@ -82,6 +82,24 @@ services:
       - celery-beat:/app/celerybeat
     restart: unless-stopped
 
+  # pgAdmin pour la gestion de la base de données
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@lafaom.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - app_network
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
   # Portainer pour la gestion Docker
   portainer:
     image: portainer/portainer-ce:latest
@@ -102,6 +120,7 @@ volumes:
   celery-beat:
   app-uploads:
   app-uploads-2:
+  pgadmin_data:
   portainer_data:
 
 networks:
