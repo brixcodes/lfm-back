@@ -65,6 +65,7 @@ class TrainingOut(BaseModel):
     info_sheet: Optional[str]
     training_type: str
     presentation: str
+
     benefits: Optional[List[BenefitInput]]
     strengths: Optional[List[StrengthInput]]
     target_skills: str
@@ -111,16 +112,13 @@ class TrainingSessionUpdateInput(BaseModel):
 class TrainingSessionOut(BaseModel):
     id: str
     training_id: str
-    center_id: Optional[int]
     start_date: Optional[date]
     end_date: Optional[date]
-    registration_deadline: date
-    available_slots: Optional[int]
     status: str
+    max_participants: int
     registration_fee: Optional[float]
     training_fee: Optional[float]
     currency: str
-    moodle_course_id: Optional[int]
     created_at: datetime
     updated_at: datetime
 
