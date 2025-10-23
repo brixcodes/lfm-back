@@ -7,11 +7,17 @@ x-app-base: &app-base
     - .:/app
   networks:
     - app_network
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_started
 
 services:
   # Base de données PostgreSQL
   postgres:
     image: postgres:15-alpine
+    container_name: postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lafaom_db}
       POSTGRES_USER: ${POSTGRES_USER:-lafaom_user}
@@ -27,59 +33,76 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   # Redis pour le cache et Celery
   redis:
     image: redis:7.0.8-alpine
+    container_name: redis
     networks:
       - app_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Application principale
   app:
     <<: *app-base
+    container_name: app
     command: /start
     ports:
       - "8000:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
     volumes:
       - app-uploads:/app/src/static/uploads
       - app-uploads-2:/app/uploads
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # Worker Celery
   celery_worker:
     <<: *app-base
+    container_name: celery_worker
     command: /start-celeryworker
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
     restart: unless-stopped
 
   # Scheduler Celery Beat
   celery_beat:
     <<: *app-base
+    container_name: celery_beat
     command: /start-celerybeat
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
     volumes:
       - celery-beat:/app/celerybeat
     restart: unless-stopped
+
+  # Portainer pour la gestion Docker
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - app_network
+    restart: unless-stopped
+    command: --http-enabled
 
 volumes:
   postgres_data:
   celery-beat:
   app-uploads:
   app-uploads-2:
+  portainer_data:
 
 networks:
   app_network:
