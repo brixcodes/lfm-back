@@ -71,13 +71,17 @@ class TrainingSession(CustomBaseUUIDModel, table=True):
     __tablename__ = "training_sessions"
     
     training_id: str = Field(foreign_key="trainings.id")
+    center_id: Optional[int] = Field(default=None, foreign_key="organization_centers.id")
     start_date: date
     end_date: date
+    registration_deadline: Optional[date] = Field(default=None)
     status: str = Field(default=TrainingSessionStatusEnum.OPEN_FOR_REGISTRATION)
     max_participants: int = Field(default=0)
+    available_slots: Optional[int] = Field(default=None)
     registration_fee: Optional[float] = Field(default=None, sa_column=Column(Numeric(12, 2)))
     training_fee: Optional[float] = Field(default=None, sa_column=Column(Numeric(12, 2)))
     currency: str = Field(default="XOF")
+    moodle_course_id: Optional[str] = Field(default=None, max_length=100)
     
     # Relationships
     training: Training = Relationship()
