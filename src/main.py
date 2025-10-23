@@ -49,7 +49,7 @@ app.celery_app = celery
 
 base_url = "/api/v1"
 
-# CORS configuration
+# CORS configuration - use dynamic origins from config
 origins = [
     "https://www.lafaom-mao.org",
     "https://lafaom-bioforce.vercel.app",
@@ -73,7 +73,16 @@ origins = [
     "https://vitrine-lafaom.vercel.app",
     "https://www.lafaom.vertex-cam.com/",
     "https://lafaom.vertex-cam.com",
+    "https://api.lafaom-mao.org",  # Add the API subdomain
+    "http://api.lafaom-mao.org",  # Add HTTP version for development
 ]
+
+# Add dynamic origins from config if available
+if settings.BACKEND_CORS_ORIGINS:
+    config_origins = settings.all_cors_origins
+    origins.extend(config_origins)
+    # Remove duplicates while preserving order
+    origins = list(dict.fromkeys(origins))
 
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 
@@ -93,7 +102,15 @@ app.add_middleware(
         "Access-Control-Request-Method",
         "Access-Control-Request-Headers",
     ],
-    expose_headers=["*"],
+    expose_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Total-Count",
+        "X-Page-Count",
+        "X-Current-Page",
+        "X-Per-Page",
+        "X-Total-Pages"
+    ],
 )
 
 app.mount("/static", StaticFiles(directory="src/static"), name="static")
