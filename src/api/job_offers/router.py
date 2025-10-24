@@ -149,6 +149,36 @@ async def get_job_applications_payment_stats(
     stats = await job_offer_service.get_payment_statistics()
     return stats
 
+@router.get("/job-applications/{application_id}/attachments", response_model=JobAttachmentListOutSuccess, tags=["Job Application"])
+async def list_job_attachments(
+    application_id: int,
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_JOB_APPLICATION]))],
+    job_offer_service: JobOfferService = Depends(),
+):
+    """List attachments for a job application"""
+    attachments = await job_offer_service.list_attachments_by_application(application_id)
+    return {"message": "Attachments fetched successfully", "data": attachments}
+
+@router.get("/job-attachments/{attachment_id}/download", tags=["Job Application"])
+async def download_job_attachment(
+    attachment_id: int,
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_JOB_APPLICATION]))],
+    job_offer_service: JobOfferService = Depends(),
+):
+    """Download a job application attachment"""
+    attachment = await job_offer_service.get_job_attachment_by_id(attachment_id)
+    if attachment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=BaseOutFail(
+                message="Attachment not found",
+                error_code="ATTACHMENT_NOT_FOUND"
+            ).model_dump(),
+        )
+    
+    # Return the file path for download
+    return {"download_url": attachment.file_path}
+
 @router.post("/job-applications/change-status", response_model=JobApplicationOutSuccess, tags=["Job Application"])
 async def change_job_application_status(
     input: UpdateJobOfferStatusInput,

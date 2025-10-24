@@ -169,6 +169,26 @@ async def list_student_attachments(
     attachments = await student_app_service.list_attachments_by_application(application_id, user_id=None)
     return {"message": "Attachments fetched successfully", "data": attachments}
 
+@router.get("/student-attachments/{attachment_id}/download", tags=["Student Application"])
+async def download_student_attachment(
+    attachment_id: int,
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_STUDENT_APPLICATION]))],
+    student_app_service: StudentApplicationService = Depends(),
+):
+    """Download a student application attachment"""
+    attachment = await student_app_service.get_student_attachment_by_id(attachment_id, user_id=None)
+    if attachment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=BaseOutFail(
+                message="Attachment not found",
+                error_code="ATTACHMENT_NOT_FOUND"
+            ).model_dump(),
+        )
+    
+    # Return the file path for download
+    return {"download_url": attachment.file_path}
+
 
 #eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3YjczZjQ0Mi01NzVhLTQzNzgtODQ3Ny00MTUxMmU1ZjI5Y2MiLCJleHAiOjE3NTg1MTgzMjB9.S99P8yGi6fmN9LTONAm266a2GKW3uvEh54FVitbY6-k
 
@@ -178,52 +198,106 @@ async def create_student_application(
     input: StudentApplicationCreateInput,
     student_app_service: StudentApplicationService = Depends(),
 ):
-    try:
-        print(f"📤 [BACKEND] Creating student application for email: {input.email}")
-        print(f"📤 [BACKEND] Target session: {input.target_session_id}")
-        print(f"📤 [BACKEND] Payment method: {input.payment_method}")
-        
-        application = await student_app_service.get_student_application_by_user_id_and_training_session(email=input.email, training_session_id=input.target_session_id)
-        if application is  None or application.status == ApplicationStatusEnum.APPROVED.value or application.status == ApplicationStatusEnum.REFUSED.value: 
-            print(f"📤 [BACKEND] Creating new application...")
-            application = await student_app_service.start_student_application(input)
-            print(f"📤 [BACKEND] Application created with ID: {application.id}")
-        else:
-            print(f"📤 [BACKEND] Using existing application ID: {application.id}")
-        
-        # Get full application details
-        full_application = await student_app_service.get_full_student_application_by_id(application.id, user_id=application.user_id)
-        print(f"📤 [BACKEND] Full application retrieved: {full_application}")
-        
-        # Initialize payment if needed
-        payment_info = None
-        if input.payment_method == "ONLINE":
-            print(f"📤 [BACKEND] Initializing online payment...")
-            # Initialize online payment
-            payment_info = await student_app_service.initialize_payment_for_application(application, input.payment_method)
-            print(f"📤 [BACKEND] Payment info: {payment_info}")
-        
-        # Prepare response data
-        response_data = {
-            "student_application": full_application,
-            "payment": payment_info
-        }
-        
-        print(f"📤 [BACKEND] Returning response: {response_data}")
-        return {"message": "Student application created successfully", "data": response_data}
-        
-    except Exception as e:
-        print(f"❌ [BACKEND] Error creating student application: {e}")
-        print(f"❌ [BACKEND] Error type: {type(e)}")
-        import traceback
-        print(f"❌ [BACKEND] Traceback: {traceback.format_exc()}")
+    # Vérifier si l'utilisateur a déjà une candidature pour cette session
+    existing_application = await student_app_service.get_student_application_by_user_id_and_training_session(
+        email=input.email, 
+        training_session_id=input.target_session_id
+    )
+    
+    if existing_application and existing_application.status not in [ApplicationStatusEnum.APPROVED.value, ApplicationStatusEnum.REFUSED.value]:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=BaseOutFail(
-                message=f"Error creating student application: {str(e)}",
-                error_code="STUDENT_APPLICATION_CREATION_FAILED"
-            ).model_dump()
+                message="You already have a pending application for this training session",
+                error_code="DUPLICATE_APPLICATION"
+            ).model_dump(),
         )
+    
+    # Créer la candidature
+    application = await student_app_service.start_student_application(input)
+    
+    # Get training session for payment details
+    training_session = await student_app_service.get_training_session_by_id(input.target_session_id)
+    if not training_session:
+        await student_app_service.delete_student_application(application)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=BaseOutFail(
+                message="Training session not found",
+                error_code="TRAINING_SESSION_NOT_FOUND"
+            ).model_dump(),
+        )
+    
+    # Si paiement par virement bancaire, pas besoin d'initialiser le paiement
+    if input.payment_method == "TRANSFER":
+        # Vérifier que le reçu de virement est fourni
+        submitted_types = [att.type for att in (input.attachments or [])]
+        if "BANK_TRANSFER_RECEIPT" not in submitted_types:
+            await student_app_service.delete_student_application(application)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=BaseOutFail(
+                    message="Bank transfer receipt is required",
+                    error_code="ATTACHMENT_REQUIRED"
+                ).model_dump(),
+            )
+        
+        return {"message": "Student application created successfully", "data": {
+            "student_application": application,
+            "payment": None
+        }}
+    
+    # Paiement en ligne (ONLINE) : initialiser le paiement
+    from src.api.payments.service import PaymentService
+    from src.api.payments.schemas import PaymentInitInput
+    import sys
+    
+    payment_service = PaymentService(student_app_service.session)
+    
+    payment_input = PaymentInitInput(
+        payable=application,
+        amount=training_session.registration_fee or 0,
+        product_currency=training_session.currency or "XOF",
+        description=f"Frais d'inscription à la formation {training_session.training_id}",
+        payment_provider="CINETPAY",
+        customer_name=input.last_name or "Student",
+        customer_surname=input.first_name or "Student",
+        customer_email=input.email,
+        customer_phone_number=input.phone_number or "0000000000",
+        customer_address=input.address or "Address",
+        customer_city=input.city or "City",
+        customer_country=input.country_code or "SN",
+        customer_state=input.country_code or "SN",
+        customer_zip_code="00000"
+    )
+    
+    try:
+        payment = await payment_service.initiate_payment(payment_input)
+    except Exception as e:
+        print(e.with_traceback(sys.exc_info()[2]))
+        await student_app_service.delete_student_application(application)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=BaseOutFail(
+                message="Payment initiation failed",
+                error_code="PAYMENT_INITIATION_FAILED"
+            ).model_dump(),
+        )
+    
+    if payment.get("success") is False:
+        await student_app_service.delete_student_application(application)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=BaseOutFail(
+                message="Payment initiation failed: " + payment.get("message", ""),
+                error_code="PAYMENT_INITIATION_FAILED"
+            ).model_dump(),
+        )
+    
+    return {"message": "Student application created successfully", "data": {
+        "student_application": application,
+        "payment": payment.get("data")
+    }}
 
 
 @router.get("/my-student-applications", response_model=StudentApplicationsPageOutSuccess, tags=["My Student Application"])

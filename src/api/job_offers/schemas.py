@@ -195,6 +195,7 @@ class JobApplicationFilter(BaseModel):
     search: Optional[str] = None
     status: Optional[str] = None
     is_paid: Optional[bool] = None  # None means show all, True means paid only, False means unpaid only
+    payment_id: Optional[bool] = None  # Alias for is_paid for frontend compatibility
     job_offer_id: Optional[str] = None
     order_by: Literal["created_at", "application_number", "status"] = "created_at"
     asc: Literal["asc", "desc"] = "asc"

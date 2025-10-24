@@ -127,6 +127,10 @@ class Settings(BaseSettings):
     CURRENCY_API_KEY : str | None = None
     CURRENCY_API_URL: str | None = None
     
+    ## Frontend and API URLs
+    FRONTEND_URL: str = "https://lafaom-mao.org"
+    API_BASE_URL: str = "https://api.lafaom-mao.org"
+    
     ## The Redis Cache turn around time
     CACHE_TTL:int   = 3600
     
