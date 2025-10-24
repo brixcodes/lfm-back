@@ -457,6 +457,12 @@ class StudentApplicationService:
         await self.session.delete(application)
         await self.session.commit()
         return application
+    
+    async def get_training_session_by_id(self, session_id: str) -> Optional[TrainingSession]:
+        """Get training session by ID"""
+        statement = select(TrainingSession).where(TrainingSession.id == session_id)
+        result = await self.session.execute(statement)
+        return result.scalars().first()
 
     async def enroll_student_to_session(self, application: StudentApplication) -> TrainingSessionParticipant:
         """Enroll student to training session"""
@@ -740,83 +746,4 @@ class StudentApplicationService:
                 ).model_dump(),
             )
         return payment
-    
-    async def initialize_payment_for_application(self, application: StudentApplication, payment_method: str) -> dict:
-        """Initialize payment for a student application"""
-        try:
-            # Import PaymentService here to avoid circular imports
-            from src.api.payments.service import PaymentService
-            
-            payment_service = PaymentService(self.session)
-            
-            # Get training session details
-            session_stmt = select(TrainingSession).where(TrainingSession.id == application.target_session_id)
-            session_res = await self.session.execute(session_stmt)
-            training_session = session_res.scalars().first()
-            
-            if not training_session:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=BaseOutFail(
-                        message=ErrorMessage.TRAINING_SESSION_NOT_FOUND.description,
-                        error_code=ErrorMessage.TRAINING_SESSION_NOT_FOUND.value
-                    ).model_dump()
-                )
-            
-            # Prepare payment input
-            payment_input = PaymentInitInput(
-                amount=training_session.registration_fee or 0,
-                currency=training_session.currency or "XOF",
-                description=f"Registration fee for training application {application.application_number}",
-                return_url=f"{settings.FRONTEND_URL}/training/success",
-                cancel_url=f"{settings.FRONTEND_URL}/training/cancel",
-                notify_url=f"{settings.API_BASE_URL}/payments/notify",
-                metadata={
-                    "application_id": str(application.id),
-                    "application_number": application.application_number,
-                    "payment_method": payment_method,
-                    "type": "TRAINING_REGISTRATION"
-                }
-            )
-            
-            # Initialize payment
-            payment_result = await payment_service.init_payment(payment_input)
-            
-            if payment_result.get("success", False):
-                # Update application with payment ID
-                application.payment_id = payment_result.get("data", {}).get("transaction_id")
-                await self.session.commit()
-                
-                return {
-                    "payment_provider": payment_result.get("data", {}).get("provider", "PAYSIKA"),
-                    "amount": training_session.registration_fee or 0,
-                    "currency": training_session.currency or "XOF",
-                    "transaction_id": payment_result.get("data", {}).get("transaction_id"),
-                    "payment_link": payment_result.get("data", {}).get("payment_url"),
-                    "notify_url": f"{settings.API_BASE_URL}/payments/notify",
-                    "message": "Payment initialized successfully"
-                }
-            else:
-                return {
-                    "payment_provider": "NONE",
-                    "amount": training_session.registration_fee or 0,
-                    "currency": training_session.currency or "XOF",
-                    "transaction_id": None,
-                    "payment_link": None,
-                    "notify_url": None,
-                    "message": "Payment initialization failed - manual payment required"
-                }
-                
-        except Exception as e:
-            print(f"Error initializing payment: {e}")
-            return {
-                "payment_provider": "NONE",
-                "amount": 0,
-                "currency": "XOF",
-                "transaction_id": None,
-                "payment_link": None,
-                "notify_url": None,
-                "message": f"Payment initialization failed: {str(e)}"
-            }
-        
     
