@@ -476,12 +476,22 @@ def upgrade() -> None:
     sa.Column('training_id', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('start_date', sa.Date(), nullable=False),
     sa.Column('end_date', sa.Date(), nullable=False),
+
+    sa.Column('center_id', sa.Integer(), nullable=True),
+    sa.Column('registration_deadline', sa.Date(), nullable=True),
+    sa.Column('available_slots', sa.Integer(), nullable=True),
+    sa.Column('moodle_course_id', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=True),
+
+
+
+
     sa.Column('status', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('max_participants', sa.Integer(), nullable=False),
     sa.Column('registration_fee', sa.Numeric(precision=12, scale=2), nullable=True),
     sa.Column('training_fee', sa.Numeric(precision=12, scale=2), nullable=True),
     sa.Column('currency', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.ForeignKeyConstraint(['training_id'], ['trainings.id'], ),
+    sa.ForeignKeyConstraint(['center_id'], ['organization_centers.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('student_applications',
