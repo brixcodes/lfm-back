@@ -177,9 +177,15 @@ class JobOfferService:
         )
         count_query = select(func.count(JobApplication.id)).where(JobApplication.delete_at.is_(None))
         
-        if filters.is_paid is not None and filters.is_paid == True:
-            statement = statement.where(JobApplication.payment_id == None)
-            count_query = count_query.where(JobApplication.status == None)
+        if filters.is_paid is not None:
+            if filters.is_paid:
+                # Applications that have a payment_id (paid)
+                statement = statement.where(JobApplication.payment_id.is_not(None))
+                count_query = count_query.where(JobApplication.payment_id.is_not(None))
+            else:
+                # Applications that don't have a payment_id (not paid)
+                statement = statement.where(JobApplication.payment_id.is_(None))
+                count_query = count_query.where(JobApplication.payment_id.is_(None))
 
         if filters.search is not None:
             like_clause = or_(
