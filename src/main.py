@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError,HTTPException
+from fastapi.exceptions import RequestValidationError, HTTPException, ResponseValidationError
 from fastapi.responses import JSONResponse
 from src.api.auth.utils import rotate_key
 from src.config import settings
@@ -149,7 +149,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     
 
 @app.exception_handler(HTTPException)
-async def validation_exception_handler(request: Request, exc: HTTPException):
+async def http_exception_handler(request: Request, exc: HTTPException):
     
     
     
@@ -171,6 +171,46 @@ async def validation_exception_handler(request: Request, exc: HTTPException):
             status_code=exc.status_code,
             content=exc.detail, 
         )
+
+@app.exception_handler(ResponseValidationError)
+async def response_validation_exception_handler(request: Request, exc: ResponseValidationError):
+    """Handle response validation errors"""
+    import traceback
+    error_traceback = traceback.format_exc()
+    
+    # Log the error for debugging
+    print(f"Response validation error: {exc}")
+    print(f"Traceback: {error_traceback}")
+    
+    return JSONResponse(
+        status_code=500,
+        content={
+            "message": "Response validation error - database schema mismatch",
+            "error_code": "response_validation_error",
+            "success": False,
+            "detail": "The database schema is out of sync with the application schema. Please run database migrations."
+        }
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Handle all unhandled exceptions"""
+    import traceback
+    error_traceback = traceback.format_exc()
+    
+    # Log the error for debugging
+    print(f"Unhandled exception: {exc}")
+    print(f"Traceback: {error_traceback}")
+    
+    return JSONResponse(
+        status_code=500,
+        content={
+            "message": "Internal server error",
+            "error_code": "internal_server_error",
+            "success": False,
+            "detail": str(exc) if settings.ENV == "development" else "An internal error occurred"
+        }
+    )
         
 
 
@@ -191,23 +231,30 @@ async def database_health() -> dict:
         from sqlalchemy import text
         
         async for session in get_session_async():
-            # Check if post_categories table exists
-            result = await session.execute(text("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = 'post_categories'
-                );
-            """))
-            post_categories_exists = result.scalar()
+            # Check if key tables exist
+            tables_to_check = [
+                "post_categories",
+                "users", 
+                "trainings",
+                "training_sessions",
+                "specialty"
+            ]
+            
+            table_status = {}
+            for table in tables_to_check:
+                result = await session.execute(text(f"""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = '{table}'
+                    );
+                """))
+                table_status[table] = result.scalar()
             
             return {
                 "status": "healthy",
                 "database": "connected",
-                "tables": {
-                    "post_categories": post_categories_exists,
-                    "users": True,  # Assuming users table exists
-                }
+                "tables": table_status
             }
     except Exception as e:
         return {

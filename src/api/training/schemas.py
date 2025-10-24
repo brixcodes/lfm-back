@@ -112,17 +112,17 @@ class TrainingSessionUpdateInput(BaseModel):
 class TrainingSessionOut(BaseModel):
     id: str
     training_id: str
-    center_id: Optional[int]
+    center_id: Optional[int] = None
     start_date: Optional[date]
     end_date: Optional[date]
-    registration_deadline: Optional[date]
+    registration_deadline: Optional[date] = None
     status: str
     max_participants: int
-    available_slots: Optional[int]
+    available_slots: Optional[int] = None
     registration_fee: Optional[float]
     training_fee: Optional[float]
     currency: str
-    moodle_course_id: Optional[str]
+    moodle_course_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
