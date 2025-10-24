@@ -33,6 +33,84 @@ async def list_student_applications_admin(
     
     return {"data": applications, "page": input.page, "number": len(applications), "total_number": total}
 
+@router.get("/student-applications/payment-stats", tags=["Student Application"])
+async def get_student_applications_payment_stats(
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_STUDENT_APPLICATION]))],
+    student_app_service: StudentApplicationService = Depends(),
+):
+    """Get statistics about student applications payment status"""
+    stats = await student_app_service.get_payment_statistics()
+    return stats
+
+@router.get("/student-applications/paid", response_model=StudentApplicationsPageOutSuccess, tags=["Student Application"])
+async def list_paid_student_applications(
+    input: Annotated[StudentApplicationFilter, Query(...)],
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_STUDENT_APPLICATION]))],
+    student_app_service: StudentApplicationService = Depends(),
+):
+    """Get only paid student applications"""
+    # Force is_paid to True
+    input.is_paid = True
+    applications, total = await student_app_service.get_student_application(filters=input, user_id=None)
+    
+    return {"data": applications, "page": input.page, "number": len(applications), "total_number": total}
+
+@router.get("/student-applications/unpaid", response_model=StudentApplicationsPageOutSuccess, tags=["Student Application"])
+async def list_unpaid_student_applications(
+    input: Annotated[StudentApplicationFilter, Query(...)],
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_STUDENT_APPLICATION]))],
+    student_app_service: StudentApplicationService = Depends(),
+):
+    """Get only unpaid student applications"""
+    # Force is_paid to False
+    input.is_paid = False
+    applications, total = await student_app_service.get_student_application(filters=input, user_id=None)
+    
+    return {"data": applications, "page": input.page, "number": len(applications), "total_number": total}
+
+@router.get("/student-applications/summary", tags=["Student Application"])
+async def get_student_applications_summary(
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_STUDENT_APPLICATION]))],
+    student_app_service: StudentApplicationService = Depends(),
+):
+    """Get a summary of student applications with payment status"""
+    # Get all applications
+    all_applications, total = await student_app_service.get_student_application(
+        filters=StudentApplicationFilter(page=1, page_size=1000), 
+        user_id=None
+    )
+    
+    # Get paid applications
+    paid_applications, paid_total = await student_app_service.get_student_application(
+        filters=StudentApplicationFilter(page=1, page_size=1000, is_paid=True), 
+        user_id=None
+    )
+    
+    # Get unpaid applications
+    unpaid_applications, unpaid_total = await student_app_service.get_student_application(
+        filters=StudentApplicationFilter(page=1, page_size=1000, is_paid=False), 
+        user_id=None
+    )
+    
+    # Calculate total revenue
+    total_revenue = sum(
+        (app.get('registration_fee', 0) or 0) + (app.get('training_fee', 0) or 0) 
+        for app in paid_applications
+    )
+    
+    return {
+        "summary": {
+            "total_applications": total,
+            "paid_applications": paid_total,
+            "unpaid_applications": unpaid_total,
+            "payment_rate": round((paid_total / total * 100) if total > 0 else 0, 2),
+            "total_revenue": total_revenue,
+            "currency": "EUR"
+        },
+        "recent_paid": paid_applications[:5],  # Last 5 paid applications
+        "recent_unpaid": unpaid_applications[:5]  # Last 5 unpaid applications
+    }
+
 
 @router.get("/student-applications/{application_id}", response_model=StudentApplicationOutSuccess, tags=["Student Application"])
 async def get_student_application_admin(

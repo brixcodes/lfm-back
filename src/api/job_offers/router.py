@@ -116,6 +116,39 @@ async def list_job_applications(
     applications, total = await job_offer_service.list_job_applications(filters)
     return {"data": applications, "page": filters.page, "number": len(applications), "total_number": total}
 
+@router.get("/job-applications/paid", response_model=JobApplicationsPageOutSuccess, tags=["Job Application"])
+async def list_paid_job_applications(
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_JOB_APPLICATION]))],
+    filters: Annotated[JobApplicationFilter, Query(...)],
+    job_offer_service: JobOfferService = Depends(),
+):
+    """Get only paid job applications"""
+    # Force is_paid to True
+    filters.is_paid = True
+    applications, total = await job_offer_service.list_job_applications(filters)
+    return {"data": applications, "page": filters.page, "number": len(applications), "total_number": total}
+
+@router.get("/job-applications/unpaid", response_model=JobApplicationsPageOutSuccess, tags=["Job Application"])
+async def list_unpaid_job_applications(
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_JOB_APPLICATION]))],
+    filters: Annotated[JobApplicationFilter, Query(...)],
+    job_offer_service: JobOfferService = Depends(),
+):
+    """Get only unpaid job applications"""
+    # Force is_paid to False
+    filters.is_paid = False
+    applications, total = await job_offer_service.list_job_applications(filters)
+    return {"data": applications, "page": filters.page, "number": len(applications), "total_number": total}
+
+@router.get("/job-applications/payment-stats", tags=["Job Application"])
+async def get_job_applications_payment_stats(
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_JOB_APPLICATION]))],
+    job_offer_service: JobOfferService = Depends(),
+):
+    """Get statistics about job applications payment status"""
+    stats = await job_offer_service.get_payment_statistics()
+    return stats
+
 @router.post("/job-applications/change-status", response_model=JobApplicationOutSuccess, tags=["Job Application"])
 async def change_job_application_status(
     input: UpdateJobOfferStatusInput,

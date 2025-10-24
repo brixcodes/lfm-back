@@ -195,7 +195,7 @@ class StudentApplicationFilter(BaseModel):
     search: Optional[str] = None
     training_id: Optional[str] = None
     training_session_id: Optional[str] = None
-    is_paid: Optional[bool] = True
+    is_paid: Optional[bool] = None  # None means show all, True means paid only, False means unpaid only
     status: Optional[str] = None
     order_by: Literal["created_at"] = "created_at"
     asc: Literal["asc", "desc"] = "asc"
@@ -253,6 +253,7 @@ class StudentApplicationOut(BaseModel):
     user_email: str
     user_first_name: str
     user_last_name: str
+    is_paid: bool = False  # Computed field to indicate payment status
 
     created_at: datetime
     updated_at: datetime

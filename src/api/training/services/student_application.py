@@ -17,6 +17,7 @@ from src.api.training.models import (
     TrainingSessionParticipant,
     Training,
 )
+from src.api.user.models import User
 from src.api.training.schemas import (
     ChangeStudentApplicationStatusInput,
     PayTrainingFeeInstallmentInput,
@@ -302,7 +303,7 @@ class StudentApplicationService:
         result = await self.session.execute(statement)
         return result.scalars().first()
     
-    async def get_student_application(self, filters: StudentApplicationFilter, user_id: Optional[str] = None) -> Tuple[List[Training], int]:
+    async def get_student_application(self, filters: StudentApplicationFilter, user_id: Optional[str] = None) -> Tuple[List[dict], int]:
         """Get student applications with filtering"""
         statement = (
             select(
@@ -367,6 +368,17 @@ class StudentApplicationService:
             statement = statement.where(StudentApplication.target_session_id == filters.training_session_id)
             count_query = count_query.where(StudentApplication.target_session_id == filters.training_session_id)
 
+        # Filter by payment status
+        if filters.is_paid is not None:
+            if filters.is_paid:
+                # Applications that have a payment_id (paid)
+                statement = statement.where(StudentApplication.payment_id.is_not(None))
+                count_query = count_query.where(StudentApplication.payment_id.is_not(None))
+            else:
+                # Applications that don't have a payment_id (not paid)
+                statement = statement.where(StudentApplication.payment_id.is_(None))
+                count_query = count_query.where(StudentApplication.payment_id.is_(None))
+
         if filters.order_by == "created_at":
             statement = statement.order_by(StudentApplication.created_at if filters.asc == "asc" else StudentApplication.created_at.desc())
 
@@ -374,7 +386,70 @@ class StudentApplicationService:
 
         statement = statement.offset((filters.page - 1) * filters.page_size).limit(filters.page_size)
         result = await self.session.execute(statement)
-        return result.all(), total_count
+        
+        # Convert results to StudentApplicationOut format
+        applications = []
+        for row in result.all():
+            app_data = {
+                'id': row.id,
+                'user_id': row.user_id,
+                'training_id': row.training_id,
+                'target_session_id': row.target_session_id,
+                'application_number': row.application_number,
+                'status': row.status,
+                'payment_id': row.payment_id,
+                'refusal_reason': row.refusal_reason,
+                'registration_fee': float(row.registration_fee) if row.registration_fee else None,
+                'training_fee': float(row.training_fee) if row.training_fee else None,
+                'currency': row.currency,
+                'training_title': row.training_title,
+                'training_session_start_date': row.training_session_start_date,
+                'training_session_end_date': row.training_session_end_date,
+                'user_email': row.user_email,
+                'user_first_name': row.user_first_name,
+                'user_last_name': row.user_last_name,
+                'is_paid': row.payment_id is not None,
+                'created_at': row.created_at,
+                'updated_at': row.updated_at
+            }
+            applications.append(app_data)
+        
+        return applications, total_count
+    
+    async def get_payment_statistics(self) -> dict:
+        """Get payment statistics for student applications"""
+        # Total applications
+        total_stmt = select(func.count(StudentApplication.id)).where(StudentApplication.delete_at.is_(None))
+        total_result = await self.session.execute(total_stmt)
+        total_applications = total_result.scalar() or 0
+        
+        # Paid applications
+        paid_stmt = select(func.count(StudentApplication.id)).where(
+            StudentApplication.delete_at.is_(None),
+            StudentApplication.payment_id.is_not(None)
+        )
+        paid_result = await self.session.execute(paid_stmt)
+        paid_applications = paid_result.scalar() or 0
+        
+        # Unpaid applications
+        unpaid_applications = total_applications - paid_applications
+        
+        # Total revenue from paid applications
+        revenue_stmt = select(func.sum(StudentApplication.registration_fee + StudentApplication.training_fee)).where(
+            StudentApplication.delete_at.is_(None),
+            StudentApplication.payment_id.is_not(None)
+        )
+        revenue_result = await self.session.execute(revenue_stmt)
+        total_revenue = revenue_result.scalar() or 0.0
+        
+        return {
+            "total_applications": total_applications,
+            "paid_applications": paid_applications,
+            "unpaid_applications": unpaid_applications,
+            "payment_rate": round((paid_applications / total_applications * 100) if total_applications > 0 else 0, 2),
+            "total_revenue": float(total_revenue),
+            "currency": "EUR"  # Default currency
+        }
     
     async def delete_student_application(self, application: StudentApplication) -> StudentApplication:
         """Delete student application"""
