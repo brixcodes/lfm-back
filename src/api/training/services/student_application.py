@@ -17,14 +17,12 @@ from src.api.training.models import (
     TrainingSessionParticipant,
     Training,
 )
-from src.api.user.models import User
 from src.api.training.schemas import (
     ChangeStudentApplicationStatusInput,
     PayTrainingFeeInstallmentInput,
     StudentApplicationCreateInput,
     StudentApplicationFilter,
     StudentAttachmentInput,
-    PaymentParametersInput,
 )
 from src.api.user.service import UserService
 from src.api.user.models import User, UserTypeEnum
@@ -73,7 +71,7 @@ class StudentApplicationService:
             create_input = {
                 "first_name": data.first_name or "",
                 "last_name": data.last_name or "",
-                "country_code": data.country_code or "SN",
+                "country_code": data.country_code or "CM",
                 "mobile_number": data.phone_number or "",
                 "email": data.email,
                 "password": default_password,
@@ -134,7 +132,6 @@ class StudentApplicationService:
         seq = (count_res.scalar() or 0) + 1
         application_number = f"APP-TRAIN-{seq:04d}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-        # Create application with all fields
         application = StudentApplication(
             user_id=user.id,
             training_id=training_id,
@@ -143,14 +140,7 @@ class StudentApplicationService:
             registration_fee=target_session.registration_fee,
             training_fee=target_session.training_fee,
             currency=target_session.currency,
-            payment_method=data.payment_method,
-            civility=data.civility,
-            city=data.city,
-            address=data.address,
-            date_of_birth=data.date_of_birth,
         )
-        
-        print(f"📝 [BACKEND] Application created with additional data: payment_method={data.payment_method}, civility={data.civility}, city={data.city}, address={data.address}, date_of_birth={data.date_of_birth}")
         self.session.add(application)
         await self.session.commit()
         await self.session.refresh(application)
@@ -182,7 +172,7 @@ class StudentApplicationService:
         await self.session.refresh(application)
         return application
 
-    async def submit_student_application(self, application: StudentApplication, payment_params=None) -> dict:
+    async def submit_student_application(self, application: StudentApplication) -> dict:
         """Submit student application and initiate payment"""
         # Use the target session to get fees
         session_stmt = select(TrainingSession).where(TrainingSession.id == application.target_session_id)
@@ -213,52 +203,26 @@ class StudentApplicationService:
         # Importation différée pour éviter l'importation circulaire
         from src.api.payments.service import PaymentService
         payment_service = PaymentService(self.session)
-        
-        # Créer le PaymentInitInput avec les paramètres de paiement
         payment_input = PaymentInitInput(
             payable=application,
             amount=amount,
             product_currency=target_session.currency,
-            description=f"Frais d'inscription à la formation {fullname}",
+            description=f"Payment for training application fee of session {fullname}",
             payment_provider="CINETPAY",
+            payment_method="WALLET",  # Méthode par défaut pour les formations
+            subscription_type="FORMATION",
         )
-        
-        # Si des paramètres de paiement sont fournis, les appliquer
-        if payment_params:
-            print(f"=== PAYMENT PARAMETERS APPLIED ===")
-            print(f"Payment Methods: {payment_params.payment_methods}")
-            print(f"Enable Card Payments: {payment_params.enable_card_payments}")
-            print(f"Enable Bank Transfers: {payment_params.enable_bank_transfers}")
-            print(f"Channels: {payment_params.channels}")
-            
-            # Modifier temporairement la configuration CinetPay pour cette transaction
-            # Sauvegarder la configuration originale
-            original_channels = settings.CINETPAY_CHANNELS
-            
-            # Appliquer les nouveaux canaux si fournis
-            if payment_params.channels:
-                settings.CINETPAY_CHANNELS = payment_params.channels
-                print(f"Temporarily changed CINETPAY_CHANNELS to: {settings.CINETPAY_CHANNELS}")
-            
-            try:
-                payment = await payment_service.initiate_payment(payment_input)
-            finally:
-                # Restaurer la configuration originale
-                settings.CINETPAY_CHANNELS = original_channels
-                print(f"Restored CINETPAY_CHANNELS to: {settings.CINETPAY_CHANNELS}")
-        else:
-            try:
-                payment = await payment_service.initiate_payment(payment_input)
-            except Exception as e:
-                print(e.with_traceback(sys.exc_info()[2]))
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=BaseOutFail(
-                        message=ErrorMessage.PAYMENT_INITIATION_FAILED.description,
-                        error_code=ErrorMessage.PAYMENT_INITIATION_FAILED.value,
-                    ).model_dump(),
-                )
-        
+        try :
+            payment = await payment_service.initiate_payment(payment_input)
+        except Exception as e:
+            print(e.with_traceback(sys.exc_info()[2]))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=BaseOutFail(
+                    message=ErrorMessage.PAYMENT_INITIATION_FAILED.description,
+                    error_code=ErrorMessage.PAYMENT_INITIATION_FAILED.value,
+                ).model_dump(),
+            )
         return payment
 
     async def get_student_application_by_id(self, application_id: int,user_id : Optional[str]=None) -> Optional[StudentApplication]:
@@ -303,7 +267,7 @@ class StudentApplicationService:
         result = await self.session.execute(statement)
         return result.scalars().first()
     
-    async def get_student_application(self, filters: StudentApplicationFilter, user_id: Optional[str] = None) -> Tuple[List[dict], int]:
+    async def get_student_application(self, filters: StudentApplicationFilter, user_id: Optional[str] = None) -> Tuple[List[Training], int]:
         """Get student applications with filtering"""
         statement = (
             select(
@@ -368,17 +332,6 @@ class StudentApplicationService:
             statement = statement.where(StudentApplication.target_session_id == filters.training_session_id)
             count_query = count_query.where(StudentApplication.target_session_id == filters.training_session_id)
 
-        # Filter by payment status
-        if filters.is_paid is not None:
-            if filters.is_paid:
-                # Applications that have a payment_id (paid)
-                statement = statement.where(StudentApplication.payment_id.is_not(None))
-                count_query = count_query.where(StudentApplication.payment_id.is_not(None))
-            else:
-                # Applications that don't have a payment_id (not paid)
-                statement = statement.where(StudentApplication.payment_id.is_(None))
-                count_query = count_query.where(StudentApplication.payment_id.is_(None))
-
         if filters.order_by == "created_at":
             statement = statement.order_by(StudentApplication.created_at if filters.asc == "asc" else StudentApplication.created_at.desc())
 
@@ -386,70 +339,7 @@ class StudentApplicationService:
 
         statement = statement.offset((filters.page - 1) * filters.page_size).limit(filters.page_size)
         result = await self.session.execute(statement)
-        
-        # Convert results to StudentApplicationOut format
-        applications = []
-        for row in result.all():
-            app_data = {
-                'id': row.id,
-                'user_id': row.user_id,
-                'training_id': row.training_id,
-                'target_session_id': row.target_session_id,
-                'application_number': row.application_number,
-                'status': row.status,
-                'payment_id': row.payment_id,
-                'refusal_reason': row.refusal_reason,
-                'registration_fee': float(row.registration_fee) if row.registration_fee else None,
-                'training_fee': float(row.training_fee) if row.training_fee else None,
-                'currency': row.currency,
-                'training_title': row.training_title,
-                'training_session_start_date': row.training_session_start_date,
-                'training_session_end_date': row.training_session_end_date,
-                'user_email': row.user_email,
-                'user_first_name': row.user_first_name,
-                'user_last_name': row.user_last_name,
-                'is_paid': row.payment_id is not None,
-                'created_at': row.created_at,
-                'updated_at': row.updated_at
-            }
-            applications.append(app_data)
-        
-        return applications, total_count
-    
-    async def get_payment_statistics(self) -> dict:
-        """Get payment statistics for student applications"""
-        # Total applications
-        total_stmt = select(func.count(StudentApplication.id)).where(StudentApplication.delete_at.is_(None))
-        total_result = await self.session.execute(total_stmt)
-        total_applications = total_result.scalar() or 0
-        
-        # Paid applications
-        paid_stmt = select(func.count(StudentApplication.id)).where(
-            StudentApplication.delete_at.is_(None),
-            StudentApplication.payment_id.is_not(None)
-        )
-        paid_result = await self.session.execute(paid_stmt)
-        paid_applications = paid_result.scalar() or 0
-        
-        # Unpaid applications
-        unpaid_applications = total_applications - paid_applications
-        
-        # Total revenue from paid applications
-        revenue_stmt = select(func.sum(StudentApplication.registration_fee + StudentApplication.training_fee)).where(
-            StudentApplication.delete_at.is_(None),
-            StudentApplication.payment_id.is_not(None)
-        )
-        revenue_result = await self.session.execute(revenue_stmt)
-        total_revenue = revenue_result.scalar() or 0.0
-        
-        return {
-            "total_applications": total_applications,
-            "paid_applications": paid_applications,
-            "unpaid_applications": unpaid_applications,
-            "payment_rate": round((paid_applications / total_applications * 100) if total_applications > 0 else 0, 2),
-            "total_revenue": float(total_revenue),
-            "currency": "EUR"  # Default currency
-        }
+        return result.all(), total_count
     
     async def delete_student_application(self, application: StudentApplication) -> StudentApplication:
         """Delete student application"""
@@ -457,12 +347,6 @@ class StudentApplicationService:
         await self.session.delete(application)
         await self.session.commit()
         return application
-    
-    async def get_training_session_by_id(self, session_id: str) -> Optional[TrainingSession]:
-        """Get training session by ID"""
-        statement = select(TrainingSession).where(TrainingSession.id == session_id)
-        result = await self.session.execute(statement)
-        return result.scalars().first()
 
     async def enroll_student_to_session(self, application: StudentApplication) -> TrainingSessionParticipant:
         """Enroll student to training session"""
@@ -730,7 +614,7 @@ class StudentApplicationService:
             payable=new_payment,
             amount=input.amount,
             product_currency=training_session.currency,
-            description=f"Frais de formation pour la formation {fullname}",
+            description=f"Payment for training fee of session {fullname}",
             payment_provider="CINETPAY",
         )
         try :
@@ -746,4 +630,5 @@ class StudentApplicationService:
                 ).model_dump(),
             )
         return payment
+        
     
