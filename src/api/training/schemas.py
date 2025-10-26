@@ -289,7 +289,7 @@ class ReclamationCreateInput(BaseModel):
     reclamation_type: int
     priority: ReclamationPriorityEnum = ReclamationPriorityEnum.LOW
     description: str
-
+# 959
 class ReclamationUpdateStatusInput(BaseModel):
     status: ReclamationStatusEnum
     admin_id: Optional[str] = None
