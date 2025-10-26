@@ -5,7 +5,6 @@ from pydantic import BaseModel, EmailStr, Field
 from src.api.job_offers.models import ApplicationStatusEnum
 from src.api.training.models import DurationEnum, ReclamationPriorityEnum, ReclamationStatusEnum, TrainingSessionStatusEnum, TrainingStatusEnum, TrainingTypeEnum
 from src.helper.schemas import BaseOutPage, BaseOutSuccess
-from src.api.payments.schemas import InitPaymentOut
 
 class StrengthInput(BaseModel):
     image: str
@@ -66,7 +65,6 @@ class TrainingOut(BaseModel):
     info_sheet: Optional[str]
     training_type: str
     presentation: str
-
     benefits: Optional[List[BenefitInput]]
     strengths: Optional[List[StrengthInput]]
     target_skills: str
@@ -113,17 +111,16 @@ class TrainingSessionUpdateInput(BaseModel):
 class TrainingSessionOut(BaseModel):
     id: str
     training_id: str
-    center_id: Optional[int] = None
+    center_id: Optional[int]
     start_date: Optional[date]
     end_date: Optional[date]
-    registration_deadline: Optional[date] = None
+    registration_deadline: date
+    available_slots: Optional[int]
     status: str
-    max_participants: int
-    available_slots: Optional[int] = None
     registration_fee: Optional[float]
     training_fee: Optional[float]
     currency: str
-    moodle_course_id: Optional[str] = None
+    moodle_course_id: Optional[int]
     created_at: datetime
     updated_at: datetime
 
@@ -196,7 +193,7 @@ class StudentApplicationFilter(BaseModel):
     search: Optional[str] = None
     training_id: Optional[str] = None
     training_session_id: Optional[str] = None
-    is_paid: Optional[bool] = None  # None means show all, True means paid only, False means unpaid only
+    is_paid: Optional[bool] = True
     status: Optional[str] = None
     order_by: Literal["created_at"] = "created_at"
     asc: Literal["asc", "desc"] = "asc"
@@ -220,12 +217,7 @@ class StudentApplicationCreateInput(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
-    civility: Optional[str] = None
     country_code: Optional[str] = None
-    city: Optional[str] = None
-    address: Optional[str] = None
-    date_of_birth: Optional[str] = None
-    payment_method: Optional[str] = None
     attachments: Optional[List[str]] = None
 
 class StudentApplicationUpdateInput(BaseModel):
@@ -254,7 +246,6 @@ class StudentApplicationOut(BaseModel):
     user_email: str
     user_first_name: str
     user_last_name: str
-    is_paid: bool = False  # Computed field to indicate payment status
 
     created_at: datetime
     updated_at: datetime
@@ -270,11 +261,6 @@ class StudentApplicationFullOut(BaseModel):
     registration_fee: Optional[float]
     training_fee: Optional[float]
     currency: str
-    payment_method: Optional[str] = None
-    civility: Optional[str] = None
-    city: Optional[str] = None
-    address: Optional[str] = None
-    date_of_birth: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     payment_id : Optional[str]
@@ -282,27 +268,9 @@ class StudentApplicationFullOut(BaseModel):
     training_session: Optional[TrainingSessionOut] = None
     # user: Optional[UserOut] = None  # Import from system schemas if needed
 
-# Payment Information Schema
-class PaymentInfoOut(BaseModel):
-    payment_provider: str
-    amount: float
-    currency: str
-    transaction_id: str
-    payment_link: Optional[str] = None
-    notify_url: Optional[str] = None
-    message: Optional[str] = None
-
-# Student Application with Payment Data
-class StudentApplicationWithPaymentData(BaseModel):
-    student_application: StudentApplicationFullOut
-    payment: Optional[InitPaymentOut] = None
-
 # Success Response Schemas
 class StudentApplicationOutSuccess(BaseOutSuccess):
     data: StudentApplicationFullOut
-
-class StudentApplicationWithPaymentOutSuccess(BaseOutSuccess):
-    data: StudentApplicationWithPaymentData
 
 class StudentApplicationsPageOutSuccess(BaseOutPage):
     data: List[StudentApplicationOut]
@@ -405,13 +373,5 @@ class ReclamationTypeOutSuccess(BaseOutSuccess):
 
 class ReclamationTypeListOutSuccess(BaseOutSuccess):
     data: List[ReclamationTypeOut]
-
-
-# Payment Parameters Schema
-class PaymentParametersInput(BaseModel):
-    payment_methods: Optional[List[str]] = ["MOBILE_MONEY", "WALLET", "CARD"]
-    enable_card_payments: Optional[bool] = True
-    enable_bank_transfers: Optional[bool] = True
-    channels: Optional[str] = "MOBILE_MONEY,WALLET,CREDIT_CARD,INTERNATIONAL_CARD"
     
 

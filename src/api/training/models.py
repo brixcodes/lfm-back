@@ -27,18 +27,6 @@ class TrainingSessionStatusEnum(str, Enum):
     ONGOING = "ONGOING"
     COMPLETED = "COMPLETED"
 
-class ReclamationPriorityEnum(str, Enum):
-    LOW = "LOW"
-    MEDIUM = "MEDIUM"
-    HIGH = "HIGH"
-    URGENT = "URGENT"
-
-class ReclamationStatusEnum(str, Enum):
-    OPEN = "OPEN"
-    IN_PROGRESS = "IN_PROGRESS"
-    RESOLVED = "RESOLVED"
-    CLOSED = "CLOSED"
-
 class Training(CustomBaseUUIDModel, table=True):
     __tablename__ = "trainings"
     
@@ -60,49 +48,53 @@ class Training(CustomBaseUUIDModel, table=True):
     target_skills: str = Field(default="", description="Skills and know-how to be acquired")
     program: str = Field(default="", description="Detailed content and structure of the training")
     target_audience: str = Field(default="", description="Intended audience and prerequisites")
-    prerequisites: str = Field(default="", description="Required prerequisites and conditions")
-    enrollment: str = Field(default="", description="Additional information and notes")
-    
-    # Relationships
-    specialty: "Specialty" = Relationship()
-    training_sessions: List["TrainingSession"] = Relationship(sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    prerequisites: Optional[str] = Field(default=None)
+    enrollment: str = Field(default="", description="Enrollment methods, duration, pace")
 
 class TrainingSession(CustomBaseUUIDModel, table=True):
     __tablename__ = "training_sessions"
-    
-    training_id: str = Field(foreign_key="trainings.id")
-    center_id: Optional[int] = Field(default=None, foreign_key="organization_centers.id")
-    start_date: date
-    end_date: date
-    registration_deadline: Optional[date] = Field(default=None)
-    status: str = Field(default=TrainingSessionStatusEnum.OPEN_FOR_REGISTRATION)
-    max_participants: int = Field(default=0)
-    available_slots: Optional[int] = Field(default=None)
+
+    training_id: str = Field(foreign_key="trainings.id", nullable=False)
+    center_id: Optional[int] = Field(default=None, foreign_key="organization_centers.id", nullable=True)
+
+    start_date: Optional[date] = Field(default=None)
+    end_date: Optional[date] = Field(default=None)
+    registration_deadline: date 
+    available_slots: Optional[int] = Field(default=None, description="Number of available places")
+
+    status: str = Field(default=TrainingSessionStatusEnum.OPEN_FOR_REGISTRATION, nullable=False)
+
     registration_fee: Optional[float] = Field(default=None, sa_column=Column(Numeric(12, 2)))
     training_fee: Optional[float] = Field(default=None, sa_column=Column(Numeric(12, 2)))
-    currency: str = Field(default="XOF")
-    moodle_course_id: Optional[str] = Field(default=None, max_length=100)
+    
+    currency: str = Field(default="EUR")
+    
+    required_attachments: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    installment_percentage: Optional[List[float]] = Field(default=None, sa_column=Column(JSON))
+    
+    moodle_course_id: Optional[int] = Field(default=None, description="Linked Moodle course id")
     
     # Relationships
-    training: Training = Relationship()
-    participants: List["TrainingSessionParticipant"] = Relationship(sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    training: Optional[Training] = Relationship()
 
 class TrainingSessionParticipant(CustomBaseModel, table=True):
     __tablename__ = "training_session_participants"
-    
-    training_session_id: str = Field(foreign_key="training_sessions.id")
-    user_id: str = Field(foreign_key="users.id")
-    registration_date: datetime = Field(default_factory=datetime.utcnow)
+
+    session_id: str = Field(foreign_key="training_sessions.id", nullable=False)
+    user_id: str = Field(foreign_key="users.id", nullable=False)
+    application_id: Optional[int] = Field(default=None, index=True, unique=True)
     
     # Relationships
-    training_session: TrainingSession = Relationship()
-    user: User = Relationship()
+    training_session: Optional[TrainingSession] = Relationship()
+    user: Optional[User] = Relationship()
+    
+
 
 class ApplicationStatusEnum(str, Enum):
     RECEIVED = "RECEIVED"
-    UNDER_REVIEW = "UNDER_REVIEW"
-    APPROVED = "APPROVED"
+    SUBMITTED = "SUBMITTED"
     REFUSED = "REFUSED"
+    APPROVED = "APPROVED"
 
 class StudentApplication(CustomBaseModel, table=True):
     __tablename__ = "student_applications"
@@ -118,13 +110,6 @@ class StudentApplication(CustomBaseModel, table=True):
     currency: str = Field(default="EUR")
     installment_percentage: Optional[List[float]] = Field(default=None, sa_column=Column(JSON))
     payment_id : Optional[str] = Field(default=None,foreign_key="payments.id", nullable=True)
-    
-    # Additional fields for frontend alignment
-    payment_method: Optional[str] = Field(default=None, max_length=20)
-    civility: Optional[str] = Field(default=None, max_length=10)
-    city: Optional[str] = Field(default=None, max_length=100)
-    address: Optional[str] = Field(default=None, max_length=255)
-    date_of_birth: Optional[str] = Field(default=None, max_length=20)
 
     training: Training = Relationship()
     training_session: TrainingSession = Relationship()
@@ -134,58 +119,57 @@ class StudentApplication(CustomBaseModel, table=True):
 
 class StudentAttachment(CustomBaseModel, table=True):
     __tablename__ = "student_attachments"
-    
-    student_application_id: int = Field(foreign_key="student_applications.id")
-    attachment_type: str = Field(max_length=50)
-    file_path: str = Field(max_length=255)
-    file_name: str = Field(max_length=255)
-    file_size: Optional[int] = Field(default=None)
-    mime_type: Optional[str] = Field(default=None, max_length=100)
-    
-    # Relationships
-    student_application: StudentApplication = Relationship()
 
-class Specialty(CustomBaseModel, table=True):
-    __tablename__ = "specialty"
-    
-    name: str = Field(max_length=100, unique=True)
-    description: Optional[str] = Field(default=None, max_length=500)
-    
-    # Relationships
-    trainings: List[Training] = Relationship(sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    application_id: int = Field(foreign_key="student_applications.id", nullable=False)
+    document_type: str = Field(max_length=100)
+    file_path: str = Field(max_length=255)
+    upload_date: Optional[datetime] = Field(default=None)
+
 
 class TrainingFeeInstallmentPayment(CustomBaseModel, table=True):
     __tablename__ = "training_fee_installment_payments"
     
-    student_application_id: int = Field(foreign_key="student_applications.id")
-    installment_number: int = Field(default=1)
-    amount: float = Field(sa_column=Column(Numeric(12, 2)))
-    currency: str = Field(default="XOF")
-    due_date: date
-    payment_status: str = Field(default="PENDING")
-    payment_date: Optional[datetime] = Field(default=None)
-    payment_reference: Optional[str] = Field(default=None, max_length=100)
+    User_id: str = Field(foreign_key="users.id", nullable=False)
+    training_session_id: str = Field(foreign_key="training_sessions.id", nullable=False)
+    application_id: int = Field(foreign_key="student_applications.id", nullable=False)
+    payment_id: Optional[str] = Field(foreign_key="payments.id", nullable=True)
+    installment_number: int
+    amount: float
+    rest_to_pay: float
+    currency: str
+
+
+class Specialty(CustomBaseModel, table=True):
+    __tablename__ = "specialty"
     
-    # Relationships
-    student_application: StudentApplication = Relationship()
+    name: str
+    description: Optional[str] = Field(default="")
+    
+
+class ReclamationStatusEnum(str, Enum):
+    NEW = "NEW"
+    IN_PROGRESS = "IN_PROGRESS"
+    CLOSED = "CLOSED"
+
+class ReclamationPriorityEnum(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+class ReclamationType(CustomBaseModel, table=True):
+    __tablename__ = "reclamation_types"
+    name: str
+    description: Optional[str] = Field(default=None)
 
 class Reclamation(CustomBaseModel, table=True):
     __tablename__ = "reclamations"
     
-    user_id: str = Field(foreign_key="users.id")
-    title: str = Field(max_length=200)
-    
-    description: str = Field(max_length=1000)
-    priority: str = Field(default=ReclamationPriorityEnum.MEDIUM)
-    status: str = Field(default=ReclamationStatusEnum.OPEN)
-    resolution_notes: Optional[str] = Field(default=None, max_length=1000)
-    resolved_at: Optional[datetime] = Field(default=None)
-    
-    # Relationships
-    user: User = Relationship()
-
-class ReclamationType(CustomBaseModel, table=True):
-    __tablename__ = "reclamation_types"
-    
-    name: str = Field(max_length=100, unique=True)
-    description: Optional[str] = Field(default=None, max_length=500)
+    admin_id: Optional[str] = Field(foreign_key="users.id", nullable=True)
+    reclamation_number: str = Field(max_length=50, index=True, unique=True)
+    application_number: str = Field(max_length=50, index=True)
+    subject: str = Field(max_length=255)
+    reclamation_type: int = Field(foreign_key="reclamation_types.id", nullable=False)
+    priority: str = Field(default=ReclamationPriorityEnum.LOW, max_length=10)
+    status: str = Field(max_length=10, default=ReclamationStatusEnum.NEW)
+    description: str = Field(default="")
+    closure_date: Optional[datetime] = Field(default=None, nullable=True, sa_type=TIMESTAMP(timezone=True))
