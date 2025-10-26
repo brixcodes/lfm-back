@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr, Field
 from src.api.job_offers.models import ApplicationStatusEnum
 from src.api.training.models import DurationEnum, ReclamationPriorityEnum, ReclamationStatusEnum, TrainingSessionStatusEnum, TrainingStatusEnum, TrainingTypeEnum
 from src.helper.schemas import BaseOutPage, BaseOutSuccess
+from src.api.payments.schemas import InitPaymentOut
 
 class StrengthInput(BaseModel):
     image: str
@@ -294,7 +295,7 @@ class PaymentInfoOut(BaseModel):
 # Student Application with Payment Data
 class StudentApplicationWithPaymentData(BaseModel):
     student_application: StudentApplicationFullOut
-    payment: Optional[PaymentInfoOut] = None
+    payment: Optional[InitPaymentOut] = None
 
 # Success Response Schemas
 class StudentApplicationOutSuccess(BaseOutSuccess):
