@@ -291,12 +291,17 @@ class PaymentInfoOut(BaseModel):
     notify_url: Optional[str] = None
     message: Optional[str] = None
 
+# Student Application with Payment Data
+class StudentApplicationWithPaymentData(BaseModel):
+    student_application: StudentApplicationFullOut
+    payment: Optional[PaymentInfoOut] = None
+
 # Success Response Schemas
 class StudentApplicationOutSuccess(BaseOutSuccess):
     data: StudentApplicationFullOut
 
 class StudentApplicationWithPaymentOutSuccess(BaseOutSuccess):
-    data: dict  # Will contain both student_application and payment info
+    data: StudentApplicationWithPaymentData
 
 class StudentApplicationsPageOutSuccess(BaseOutPage):
     data: List[StudentApplicationOut]

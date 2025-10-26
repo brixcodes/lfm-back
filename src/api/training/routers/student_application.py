@@ -294,9 +294,21 @@ async def create_student_application(
             ).model_dump(),
         )
     
+    # Convertir les données de paiement en PaymentInfoOut
+    payment_data = payment.get("data", {})
+    payment_info = PaymentInfoOut(
+        payment_provider=payment_data.get("payment_provider", "CINETPAY"),
+        amount=payment_data.get("amount", 0),
+        currency=payment_data.get("currency", "XOF"),
+        transaction_id=payment_data.get("transaction_id", ""),
+        payment_link=payment_data.get("payment_link"),
+        notify_url=payment_data.get("notify_url"),
+        message=payment_data.get("message")
+    )
+    
     return {"message": "Student application created successfully", "data": {
         "student_application": application,
-        "payment": payment.get("data")
+        "payment": payment_info
     }}
 
 
