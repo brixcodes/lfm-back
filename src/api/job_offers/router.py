@@ -113,6 +113,10 @@ async def list_job_applications(
     filters: Annotated[JobApplicationFilter, Query(...)],
     job_offer_service: JobOfferService = Depends(),
 ):
+    """Get only paid job applications by default"""
+    # Force is_paid to True by default for the main endpoint
+    if filters.is_paid is None:
+        filters.is_paid = True
     applications, total = await job_offer_service.list_job_applications(filters)
     return {"data": applications, "page": filters.page, "number": len(applications), "total_number": total}
 
@@ -137,6 +141,18 @@ async def list_unpaid_job_applications(
     """Get only unpaid job applications"""
     # Force is_paid to False
     filters.is_paid = False
+    applications, total = await job_offer_service.list_job_applications(filters)
+    return {"data": applications, "page": filters.page, "number": len(applications), "total_number": total}
+
+@router.get("/job-applications/all", response_model=JobApplicationsPageOutSuccess, tags=["Job Application"])
+async def list_all_job_applications(
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_JOB_APPLICATION]))],
+    filters: Annotated[JobApplicationFilter, Query(...)],
+    job_offer_service: JobOfferService = Depends(),
+):
+    """Get all job applications (both paid and unpaid)"""
+    # Force is_paid to None to show all applications
+    filters.is_paid = None
     applications, total = await job_offer_service.list_job_applications(filters)
     return {"data": applications, "page": filters.page, "number": len(applications), "total_number": total}
 
