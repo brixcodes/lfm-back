@@ -11,7 +11,8 @@ from src.helper.schemas import BaseOutFail, ErrorMessage
 from src.api.user.service import UserService
 from src.api.user.schemas import ( AssignPermissionsInput, AssignRoleInput, CreateUserInput, PermissionListOutSuccess, PermissionSmallListOutSuccess, RoleListOutSuccess, RoleOutSuccess, UpdateStatusInput, UpdateUserInput, UserFilter, UserListInput, UserListOutSuccess, UserOutSuccess, UsersPageOutSuccess)
 
-router = APIRouter()
+router = AP
+IRouter()
 # router
 
 @router.post('/users/assign-permissions',response_model=PermissionListOutSuccess,tags=["Role And Permission"])
