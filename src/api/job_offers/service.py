@@ -173,7 +173,10 @@ class JobOfferService:
         statement = (
             select(JobApplication)
             .join(JobOffer, JobOffer.id == JobApplication.job_offer_id)
-            .where(JobApplication.delete_at.is_(None))
+            .where(
+                JobApplication.delete_at.is_(None),
+                JobApplication.payment_id.is_not(None)  # 🔹 Seules les candidatures payées
+            )
         )
         count_query = select(func.count(JobApplication.id)).where(JobApplication.delete_at.is_(None))
         
