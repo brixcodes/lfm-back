@@ -173,15 +173,16 @@ class JobOfferService:
         statement = (
             select(JobApplication)
             .join(JobOffer, JobOffer.id == JobApplication.job_offer_id)
-            .where(
-                JobApplication.delete_at.is_(None),
-                JobApplication.payment_id.is_not(None)  # 🔹 Seules les candidatures payées
-            )
+            .where(JobApplication.delete_at.is_(None))
         )
         count_query = select(func.count(JobApplication.id)).where(JobApplication.delete_at.is_(None))
         
         # Handle payment status filtering (support both is_paid and payment_id parameters)
         payment_filter = filters.is_paid if filters.is_paid is not None else filters.payment_id
+        
+        # Par défaut, ne retourner que les candidatures payées
+        if payment_filter is None:
+            payment_filter = True
         
         if payment_filter is not None:
             if payment_filter:
