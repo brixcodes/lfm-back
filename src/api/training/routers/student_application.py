@@ -6,6 +6,7 @@ from src.api.payments.schemas import InitPaymentOutSuccess
 from src.api.user.models import PermissionEnum, User
 from src.helper.schemas import BaseOutFail, ErrorMessage
 from src.api.training.services import StudentApplicationService
+
 from src.api.training.schemas import (
     ChangeStudentApplicationStatusInput,
     PayTrainingFeeInstallmentInput,
@@ -16,6 +17,8 @@ from src.api.training.schemas import (
     StudentApplicationOutSuccess,
     StudentAttachmentOutSuccess,
     StudentAttachmentListOutSuccess,
+    StudentApplicationFullOut,
+    PaymentInfo,
 )
 
 router = APIRouter()
@@ -92,23 +95,123 @@ async def list_student_attachments(
 #eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3YjczZjQ0Mi01NzVhLTQzNzgtODQ3Ny00MTUxMmU1ZjI5Y2MiLCJleHAiOjE3NTg1MTgzMjB9.S99P8yGi6fmN9LTONAm266a2GKW3uvEh54FVitbY6-k
 
 #My  Student Applications
-@router.post("/student-applications", response_model=StudentApplicationOutSuccess, tags=["My Student Application"])
+@router.post(
+    "/student-applications",
+    response_model=StudentApplicationOutSuccess,  # adapte si nom different
+    tags=["My Student Application"]
+)
 async def create_student_application(
-    input: StudentApplicationCreateInput,
+    input: StudentApplicationCreateInput,  # schéma d'entrée (email, payment_method, attachments...)
     student_app_service: StudentApplicationService = Depends(),
 ):
-    application = await student_app_service.get_student_application_by_user_id_and_training_session(email=input.email, training_session_id=input.target_session_id)
-    if application is  None or application.status == ApplicationStatusEnum.APPROVED.value or application.status == ApplicationStatusEnum.REFUSED.value: 
-        application = await student_app_service.start_student_application(input)
-    
-    application = await student_app_service.get_full_student_application_by_id(application.id, user_id=application.user_id)
+    """
+    Crée une candidature étudiante et (si ONLINE) initie un paiement en ligne.
+    Retourne la candidature complète + bloc 'payment' (ou null si pas de paiement).
+    """
 
+    # 1️⃣ Vérifier s'il existe déjà une candidature pour cet utilisateur et cette session
+    application = await student_app_service.get_student_application_by_user_id_and_training_session(
+        email=input.email,
+        training_session_id=input.target_session_id
+    )
+
+    if application is None or application.status in [
+        ApplicationStatusEnum.APPROVED.value,
+        ApplicationStatusEnum.REFUSED.value
+    ]:
+        # Démarrer une nouvelle candidature
+        application = await student_app_service.start_student_application(input)
+
+    # 2️⃣ Recharger la candidature complète (relations incluses)
+    application = await student_app_service.get_full_student_application_by_id(
+        application.id,
+        user_id=application.user_id
+    )
+
+    # 3️⃣ Cas TRANSFER → reçu bancaire obligatoire
+    if getattr(input, "payment_method", None) == "TRANSFER":
+        submitted_types = [att.type for att in (input.attachments or [])]
+        if "BANK_TRANSFER_RECEIPT" not in submitted_types:
+            await student_app_service.delete_student_application(application)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=BaseOutFail(
+                    message="Bank transfer receipt is required",
+                    error_code="STUDENT_ATTACHMENT_REQUIRED"
+                ).model_dump(),
+            )
+
+        # Envoi mail de confirmation (optionnel)
+        await student_app_service.send_application_confirmation_email(application)
+
+        data_model = StudentApplicationFullOut.model_validate(application, from_attributes=True)
+        data = data_model.model_dump()
+        data["payment"] = None
+
+        return {
+            "success": True,
+            "message": "Student application created successfully",
+            "data": data
+        }
+
+    # 4️⃣ Cas ONLINE → initier paiement via le service
     payment = None
-    # Ajout : Si le mode de paiement est 'ONLINE', initier le paiement
-    if hasattr(input, 'payment_method') and input.payment_method == 'ONLINE':
-        payment = await student_app_service.initiate_online_payment(application)
-    
-    return {"message": "Student application created successfully", "data": {**application.dict(), "payment": payment}}
+    if getattr(input, "payment_method", None) == "ONLINE":
+        payment_obj = await student_app_service.initiate_online_payment(application)
+
+        # --- Construire l'objet PaymentInfo proprement ---
+        payment_info = PaymentInfo(
+            success=payment_obj.get("success", False),
+            payment_provider=payment_obj.get("payment_provider"),
+            amount=payment_obj.get("amount"),
+            payment_link=payment_obj.get("payment_link"),
+            transaction_id=payment_obj.get("transaction_id"),
+            notify_url=payment_obj.get("notify_url"),
+            message=payment_obj.get("message"),
+            raw_response=payment_obj,
+            metadata={"application_id": getattr(application, "id", None), "user_email": getattr(application, "email", None)}
+        )
+
+        # debug lisible dans logs (JSON)
+        print("DEBUG payment_info:", payment_info.model_dump_json(indent=2))
+
+        # Si payment_info.success est True, on prépare le bloc à renvoyer
+        if payment_info.success:
+            payment = payment_info.model_dump()
+
+            # Optionnel: sauvegarder l'identifiant/URL de paiement dans la candidature
+            # (adapter les noms de colonnes à ton modèle ORM)
+            try:
+                application.payment_provider = payment_info.payment_provider
+                application.transaction_id = payment_info.transaction_id
+                application.payment_url = str(payment_info.payment_link) if payment_info.payment_link else None
+                application.payment_status = payment_info.status
+                # si tu as un champ payment_id numérique ou UUID, remplis-le aussi
+                # application.payment_id = payment_info.transaction_id
+                await student_app_service.save(application)
+            except Exception as e:
+                # Ne bloque pas le retour au frontend si la sauvegarde échoue, mais logge l'erreur
+                print("WARN: unable to persist payment info to application:", e)
+
+        else:
+            # paiement non réussi côté provider -> log et renvoyer erreur HTTP si tu veux
+            print("WARN: payment initiation failed:", payment_info.model_dump())
+            # tu peux choisir de lever une exception à ce stade. Ici on continue et renvoie payment = None
+
+    # 5️⃣ Construire la réponse finale avec la candidature complète + payment
+    data_model = StudentApplicationFullOut.model_validate(application, from_attributes=True)
+    data = data_model.model_dump()
+    data["payment"] = payment
+
+    # Optionnel: envoyer l'email de confirmation même si paiement ONLINE (selon ton besoin)
+    # await student_app_service.send_application_confirmation_email(application)
+
+    return {
+        "success": True,
+        "message": "Student application created successfully",
+        "data": data
+    }
+
 
 @router.get("/my-student-applications", response_model=StudentApplicationsPageOutSuccess, tags=["My Student Application"])
 async def list_my_student_applications(
