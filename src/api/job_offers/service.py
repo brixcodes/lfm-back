@@ -233,11 +233,9 @@ class JobOfferService:
         cover_url, _, _ = await FileHelper.upload_file(
                 data.file, f"/job-applications", slugify(data.name)
             )
-            
-        print("nanyang brice debug data.document_type :", data.document_type)
         attachment = JobAttachment(
             file_path=cover_url,
-            document_type=data.document_type,
+            document_type=data.name,
             name=data.name
         )
         self.session.add(attachment)

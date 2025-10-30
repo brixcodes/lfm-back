@@ -1,8 +1,7 @@
 from datetime import date, datetime, timezone
 import sys
-from typing import Annotated, Optional
+from typing import Annotated
 from fastapi import APIRouter, Depends, Form, File, HTTPException, Query, status
-
 from fastapi import UploadFile
 
 from src.api.auth.utils import check_permissions
@@ -360,11 +359,10 @@ async def get_job_application_route(
 async def create_attachment(
     name: str = Form(...),
     file: UploadFile = File(...),
-    document_type: Optional[str] = Form(None),
     job_offer_service: JobOfferService = Depends(),
 ):
     # Créer l'objet JobAttachmentInput manuellement
-    input_data = JobAttachmentInput(name=name, file=file, document_type=document_type)
+    input_data = JobAttachmentInput(name=name, file=file)
     attachment = await job_offer_service.create_job_attachment(input_data)
     return {"message": "Attachment created successfully", "data": [attachment]}
 
