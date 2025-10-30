@@ -140,6 +140,7 @@ class StudentApplicationService:
             registration_fee=target_session.registration_fee,
             training_fee=target_session.training_fee,
             currency=target_session.currency,
+            payment_method=getattr(data, 'payment_method', None),
         )
         self.session.add(application)
         await self.session.commit()
@@ -224,6 +225,40 @@ class StudentApplicationService:
                 ).model_dump(),
             )
         return payment
+
+    async def initiate_online_payment(self, application: StudentApplication) -> dict:
+        session_stmt = select(TrainingSession).where(TrainingSession.id == application.target_session_id)
+        session_res = await self.session.execute(session_stmt)
+        target_session = session_res.scalars().first()
+        if target_session is None:
+            return {"success": False, "message": "SESSION_NOT_FOUND"}
+
+        amount = target_session.registration_fee or 0.0
+
+        tr_stmt = select(Training).where(Training.id == target_session.training_id)
+        tr_res = await self.session.execute(tr_stmt)
+        training = tr_res.scalars().first()
+        start_str = target_session.start_date.strftime("%B %Y") if target_session.start_date else "Undated"
+        cohort = f"Cohort {target_session.id[:6].upper()}"
+        fullname = f"{training.title} – {start_str} {cohort}"
+
+        from src.api.payments.service import PaymentService
+        payment_service = PaymentService(self.session)
+        payment_input = PaymentInitInput(
+            payable=application,
+            amount=amount,
+            product_currency=target_session.currency,
+            description=f"Payment for training application fee of session {fullname}",
+            payment_provider="CINETPAY",
+            payment_method="ONLINE",
+            subscription_type="FORMATION",
+        )
+        try:
+            payment = await payment_service.initiate_payment(payment_input)
+            return payment
+        except Exception as e:
+            print(e.with_traceback(sys.exc_info()[2]))
+            return {"success": False, "message": str(e)}
 
     async def get_student_application_by_id(self, application_id: int,user_id : Optional[str]=None) -> Optional[StudentApplication]:
         """Get student application by ID"""

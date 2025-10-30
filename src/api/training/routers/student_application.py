@@ -102,8 +102,13 @@ async def create_student_application(
         application = await student_app_service.start_student_application(input)
     
     application = await student_app_service.get_full_student_application_by_id(application.id, user_id=application.user_id)
+
+    payment = None
+    # Ajout : Si le mode de paiement est 'ONLINE', initier le paiement
+    if hasattr(input, 'payment_method') and input.payment_method == 'ONLINE':
+        payment = await student_app_service.initiate_online_payment(application)
     
-    return {"message": "Student application created successfully", "data": application}
+    return {"message": "Student application created successfully", "data": {**application.dict(), "payment": payment}}
 
 @router.get("/my-student-applications", response_model=StudentApplicationsPageOutSuccess, tags=["My Student Application"])
 async def list_my_student_applications(
