@@ -252,6 +252,39 @@ class StudentApplicationOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
+class PaymentInfo(BaseModel):
+    success: bool
+    payment_provider: Optional[str] = None
+    amount: Optional[float] = None
+    currency: Optional[str] = "XAF"                # adapte si besoin
+    payment_link: Optional[str] = None
+    transaction_id: Optional[str] = None
+    notify_url: Optional[str] = None
+    message: Optional[str] = None
+    status: Optional[str] = "PENDING"              # ex: PENDING, SUCCESS, FAILED
+    created_at: datetime = datetime.utcnow()
+    raw_response: Optional[dict] = None  # garde la réponse brute pour debug/audit
+    metadata: Optional[dict] = None      # données additionnelles (user_id, session_id, etc.)
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "success": True,
+                "payment_provider": "CINETPAY",
+                "amount": 50.0,
+                "currency": "XAF",
+                "payment_link": "https://checkout.cinetpay.com/payment/....",
+                "transaction_id": "32866bd8-4bba-4b35-84cb-d6a994a2a1c5",
+                "notify_url": "http://194.238.25.170:7052/api/v1/payments/cinetpay/notify",
+                "message": "",
+                "status": "PENDING",
+                "created_at": "2025-10-30T17:51:00Z",
+                "raw_response": {"success": True, "...": "..."},
+                "metadata": {"user_email": "etudiant@example.com", "application_id": 123}
+            }
+        }
+
 class StudentApplicationFullOut(BaseModel):
     id: int
     user_id: str
@@ -269,6 +302,8 @@ class StudentApplicationFullOut(BaseModel):
     payment_id : Optional[str]
     training: Optional[TrainingOut] = None
     training_session: Optional[TrainingSessionOut] = None
+    # Ajout: objet payment pour exposer le lien de paiement
+    payment: Optional[dict] = None
     # user: Optional[UserOut] = None  # Import from system schemas if needed
 
 # Success Response Schemas
