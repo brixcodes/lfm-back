@@ -235,7 +235,7 @@ class JobOfferService:
             )
         attachment = JobAttachment(
             file_path=cover_url,
-            document_type=data.type,
+            document_type=data.name,
             name=data.name
         )
         self.session.add(attachment)

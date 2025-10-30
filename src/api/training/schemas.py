@@ -200,8 +200,8 @@ class StudentApplicationFilter(BaseModel):
 
 # Student Application and Attachments
 class StudentAttachmentInput(BaseModel):
-    type: str
-    url: str
+    name: str
+    file: UploadFile
 
 class StudentAttachmentOut(BaseModel):
     id: int
@@ -218,7 +218,7 @@ class StudentApplicationCreateInput(BaseModel):
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
     country_code: Optional[str] = None
-    attachments: Optional[List[StudentAttachmentInput]] = None
+    attachments: Optional[List[str]] = None
     payment_method: Optional[str] = None
 
 class StudentApplicationUpdateInput(BaseModel):
