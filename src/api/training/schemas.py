@@ -203,6 +203,11 @@ class StudentAttachmentInput(BaseModel):
     name: str
     file: UploadFile
 
+class AttachmentInput(BaseModel):
+    type: str
+    url: str
+    name: Optional[str] = None
+
 class StudentAttachmentOut(BaseModel):
     id: int
     application_id: int
@@ -218,7 +223,7 @@ class StudentApplicationCreateInput(BaseModel):
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
     country_code: Optional[str] = None
-    attachments: Optional[List[str]] = None
+    attachments: Optional[List[AttachmentInput]] = None
     payment_method: Optional[str] = None
 
 class StudentApplicationUpdateInput(BaseModel):
