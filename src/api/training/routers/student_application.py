@@ -141,8 +141,8 @@ async def create_student_application(
                 ).model_dump(),
             )
 
-        # Envoi mail de confirmation (optionnel)
-        await student_app_service.send_application_confirmation_email(application)
+        # Envoi mail de confirmation (optionnel) - TODO: Implémenter cette méthode
+        # await student_app_service.send_application_confirmation_email(application)
 
         data_model = StudentApplicationFullOut.model_validate(application, from_attributes=True)
         data = data_model.model_dump()
