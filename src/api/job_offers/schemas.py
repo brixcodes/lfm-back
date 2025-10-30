@@ -98,7 +98,6 @@ class JobAttachmentInput(BaseModel):
     
     name: str
     file: UploadFile
-    document_type: Optional[str] = None
 
 class JobAttachmentInput2(BaseModel):
 
