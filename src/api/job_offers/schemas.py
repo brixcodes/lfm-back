@@ -181,6 +181,7 @@ class JobApplicationOut(BaseModel):
     date_of_birth: Optional[date]
     created_at: datetime
     updated_at: datetime
+    payment_method: str
 
 class JobApplicationFullOut(JobApplicationOut):
     attachments : Optional[List[JobAttachmentOut]]
