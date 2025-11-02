@@ -170,6 +170,7 @@ class JobOfferService:
         return result.scalars().first()
 
     async def list_job_applications(self, filters: JobApplicationFilter) -> Tuple[List[JobApplication], int]:
+        from sqlalchemy import case, exists
         statement = (
             select(JobApplication)
             .join(JobOffer, JobOffer.id == JobApplication.job_offer_id)
@@ -177,20 +178,19 @@ class JobOfferService:
         )
         count_query = select(func.count(JobApplication.id)).where(JobApplication.delete_at.is_(None))
         
-        # Handle payment status filtering (support both is_paid and payment_id parameters)
         payment_filter = filters.is_paid if filters.is_paid is not None else filters.payment_id
-        
-        # Par défaut, ne retourner que les candidatures payées
         if payment_filter is None:
             payment_filter = True
         
         if payment_filter is not None:
             if payment_filter:
-                # Applications that have a payment_id (paid)
-                statement = statement.where(JobApplication.payment_id.is_not(None))
-                count_query = count_query.where(JobApplication.payment_id.is_not(None))
+                has_receipt = exists().where(
+                    JobAttachment.application_id == JobApplication.id,
+                    JobAttachment.document_type == "BANK_TRANSFER_RECEIPT"
+                )
+                statement = statement.where(or_(JobApplication.payment_id.is_not(None), has_receipt))
+                count_query = count_query.where(or_(JobApplication.payment_id.is_not(None), has_receipt))
             else:
-                # Applications that don't have a payment_id (not paid)
                 statement = statement.where(JobApplication.payment_id.is_(None))
                 count_query = count_query.where(JobApplication.payment_id.is_(None))
 
@@ -214,19 +214,27 @@ class JobOfferService:
             statement = statement.where(JobApplication.job_offer_id == filters.job_offer_id)
             count_query = count_query.where(JobApplication.job_offer_id == filters.job_offer_id)
 
-        if filters.order_by == "created_at":
-            statement = statement.order_by(JobApplication.created_at if filters.asc == "asc" else JobApplication.created_at.desc())
-        elif filters.order_by == "application_number":
-            statement = statement.order_by(JobApplication.application_number if filters.asc == "asc" else JobApplication.application_number.desc())
-        elif filters.order_by == "status":
-            statement = statement.order_by(JobApplication.status if filters.asc == "asc" else JobApplication.status.desc())
-
         total_count = (await self.session.execute(count_query)).scalar_one()
+
+        # Prioritize BANK_TRANSFER_RECEIPT
+        priority = case(
+            (exists().where(
+                JobAttachment.application_id == JobApplication.id,
+                JobAttachment.document_type == "BANK_TRANSFER_RECEIPT"
+            ), 0),
+            else_=1
+        )
+
+        if filters.order_by == "created_at":
+            statement = statement.order_by(priority, JobApplication.created_at if filters.asc == "asc" else JobApplication.created_at.desc())
+        elif filters.order_by == "application_number":
+            statement = statement.order_by(priority, JobApplication.application_number if filters.asc == "asc" else JobApplication.application_number.desc())
+        elif filters.order_by == "status":
+            statement = statement.order_by(priority, JobApplication.status if filters.asc == "asc" else JobApplication.status.desc())
 
         statement = statement.offset((filters.page - 1) * filters.page_size).limit(filters.page_size)
         result = await self.session.execute(statement)
         return result.scalars().all(), total_count
-
 
     # Job Attachments
     async def create_job_attachment(self, data: JobAttachmentInput) -> JobAttachment:
