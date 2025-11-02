@@ -170,7 +170,7 @@ class JobOfferService:
         return result.scalars().first()
 
     async def list_job_applications(self, filters: JobApplicationFilter) -> Tuple[List[JobApplication], int]:
-        from sqlalchemy import case, exists
+        from sqlalchemy import case, exists, or_, and_
         statement = (
             select(JobApplication)
             .join(JobOffer, JobOffer.id == JobApplication.job_offer_id)
@@ -179,20 +179,27 @@ class JobOfferService:
         count_query = select(func.count(JobApplication.id)).where(JobApplication.delete_at.is_(None))
         
         payment_filter = filters.is_paid if filters.is_paid is not None else filters.payment_id
-        if payment_filter is None:
-            payment_filter = True
         
         if payment_filter is not None:
             if payment_filter:
-                has_receipt = exists().where(
-                    JobAttachment.application_id == JobApplication.id,
-                    JobAttachment.document_type == "BANK_TRANSFER_RECEIPT"
+                # "Paid": TRANSFER (tous) OU (ONLINE ET payment_id NOT NULL)
+                paid_condition = or_(
+                    JobApplication.payment_method == "TRANSFER",
+                    and_(
+                        JobApplication.payment_method == "ONLINE",
+                        JobApplication.payment_id.is_not(None)
+                    )
                 )
-                statement = statement.where(or_(JobApplication.payment_id.is_not(None), has_receipt))
-                count_query = count_query.where(or_(JobApplication.payment_id.is_not(None), has_receipt))
+                statement = statement.where(paid_condition)
+                count_query = count_query.where(paid_condition)
             else:
-                statement = statement.where(JobApplication.payment_id.is_(None))
-                count_query = count_query.where(JobApplication.payment_id.is_(None))
+                # "Unpaid": Seulement ONLINE ET payment_id IS NULL (exclure TRANSFER)
+                unpaid_condition = and_(
+                    JobApplication.payment_method == "ONLINE",
+                    JobApplication.payment_id.is_(None)
+                )
+                statement = statement.where(unpaid_condition)
+                count_query = count_query.where(unpaid_condition)
 
         if filters.search is not None:
             like_clause = or_(
@@ -216,12 +223,9 @@ class JobOfferService:
 
         total_count = (await self.session.execute(count_query)).scalar_one()
 
-        # Prioritize BANK_TRANSFER_RECEIPT
+        # Prioritize TRANSFER (payment_method == "TRANSFER" first)
         priority = case(
-            (exists().where(
-                JobAttachment.application_id == JobApplication.id,
-                JobAttachment.document_type == "BANK_TRANSFER_RECEIPT"
-            ), 0),
+            (JobApplication.payment_method == "TRANSFER", 0),
             else_=1
         )
 

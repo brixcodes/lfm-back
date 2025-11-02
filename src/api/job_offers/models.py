@@ -13,6 +13,9 @@ class ApplicationStatusEnum(str, Enum):
     RECEIVED = "RECEIVED"
     REFUSED = "REFUSED"
     APPROVED = "APPROVED"
+
+
+
 class JobOffer(CustomBaseUUIDModel, table=True):
     __tablename__ = "job_offers"
     
@@ -66,6 +69,7 @@ class JobApplication(CustomBaseModel, table=True):
         sa_column=Column(Numeric(precision=12, scale=2))
     )
     currency : Optional[str] = Field(default="EUR",nullable=True)
+    payment_method: str = Field(default="ONLINE", description="Méthode de paiement : ONLINE ou TRANSFER")
     email : str 
     phone_number : str
     first_name : str

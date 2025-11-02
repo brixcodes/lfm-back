@@ -113,7 +113,7 @@ async def list_job_applications(
     filters: Annotated[JobApplicationFilter, Query(...)],
     job_offer_service: JobOfferService = Depends(),
 ):
-    """Get only paid job applications by default"""
+    """Get only 'paid' job applications by default (TRANSFER all + ONLINE paid)"""
     # Force is_paid to True by default for the main endpoint
     if filters.is_paid is None:
         filters.is_paid = True

@@ -224,7 +224,7 @@ class StudentApplicationCreateInput(BaseModel):
     phone_number: Optional[str] = None
     country_code: Optional[str] = None
     attachments: Optional[List[AttachmentInput]] = None
-    payment_method: Optional[str] = None
+    payment_method: Literal["ONLINE", "TRANSFER"] = "ONLINE"
 
 class StudentApplicationUpdateInput(BaseModel):
     status: Optional[ApplicationStatusEnum] = None
@@ -242,7 +242,7 @@ class StudentApplicationOut(BaseModel):
     application_number: str
     status: str
     payment_id : Optional[str]
-    payment_method: Optional[str] = None
+    payment_method: Optional[str]
     refusal_reason: Optional[str]
     registration_fee: Optional[float]
     training_fee: Optional[float]

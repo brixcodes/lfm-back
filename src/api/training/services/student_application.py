@@ -3,8 +3,9 @@ from typing import List, Optional, Tuple
 from datetime import date, datetime, timezone
 from fastapi import Depends, HTTPException ,status
 from sqlalchemy import func, update 
+from sqlalchemy import  and_, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload , joinedload
 from sqlmodel import select, or_
 
 from src.api.job_offers.models import ApplicationStatusEnum
@@ -23,6 +24,7 @@ from src.api.training.schemas import (
     StudentApplicationCreateInput,
     StudentApplicationFilter,
     StudentAttachmentInput,
+    StudentApplicationOut,
 )
 from src.api.user.service import UserService
 from src.api.user.models import User, UserTypeEnum
@@ -302,34 +304,18 @@ class StudentApplicationService:
         result = await self.session.execute(statement)
         return result.scalars().first()
     
-    async def get_student_application(self, filters: StudentApplicationFilter, user_id: Optional[str] = None) -> Tuple[List[Training], int]:
+    async def get_student_application(self, filters: StudentApplicationFilter, user_id: Optional[str] = None) -> Tuple[List[StudentApplicationOut], int]:
         """Get student applications with filtering"""
         statement = (
-            select(
-                StudentApplication.id,
-                StudentApplication.application_number,
-                StudentApplication.status,
-                StudentApplication.target_session_id,
-                StudentApplication.refusal_reason,  
-                StudentApplication.registration_fee,
-                StudentApplication.training_fee,
-                StudentApplication.currency,
-                StudentApplication.created_at,
-                StudentApplication.updated_at,
-                StudentApplication.training_id,
-                StudentApplication.payment_id,
-                Training.title.label("training_title"),
-                TrainingSession.start_date.label("training_session_start_date"),
-                TrainingSession.end_date.label("training_session_end_date"),
-                StudentApplication.user_id,
-                User.email.label("user_email"),
-                User.first_name.label("user_first_name"),
-                User.last_name.label("user_last_name"),
-            )
+            select(StudentApplication)
             .join(User, User.id == StudentApplication.user_id)
             .join(Training, Training.id == StudentApplication.training_id)
             .join(TrainingSession, TrainingSession.id == StudentApplication.target_session_id)
             .where(StudentApplication.delete_at.is_(None))
+            .options(joinedload(StudentApplication.training))  # AJOUT : Eager loading pour éviter lazy load
+            .options(joinedload(StudentApplication.training_session))
+            .options(joinedload(StudentApplication.user))
+            .options(selectinload(StudentApplication.attachments))
         )
         
         count_query = (
@@ -343,12 +329,35 @@ class StudentApplicationService:
         if user_id is not None:
             statement = statement.where(StudentApplication.user_id == user_id)
             count_query = count_query.where(StudentApplication.user_id == user_id)
-        
+
+        # Filtrage par paiement basé sur payment_method
+        payment_filter = filters.is_paid if filters.is_paid is not None else None
+        if payment_filter is not None:
+            if payment_filter:
+                # "Paid": TRANSFER (tous) OU (ONLINE ET payment_id NOT NULL)
+                paid_condition = or_(
+                    StudentApplication.payment_method == "TRANSFER",
+                    and_(
+                        StudentApplication.payment_method == "ONLINE",
+                        StudentApplication.payment_id.is_not(None)
+                    )
+                )
+                statement = statement.where(paid_condition)
+                count_query = count_query.where(paid_condition)
+            else:
+                # "Unpaid": Seulement ONLINE ET payment_id IS NULL (exclure TRANSFER)
+                unpaid_condition = and_(
+                    StudentApplication.payment_method == "ONLINE",
+                    StudentApplication.payment_id.is_(None)
+                )
+                statement = statement.where(unpaid_condition)
+                count_query = count_query.where(unpaid_condition)
 
         if filters.search is not None:
             like_clause = or_(
                 User.first_name.contains(filters.search),
                 User.last_name.contains(filters.search),
+                User.email.contains(filters.search),
                 Training.title.contains(filters.search),
                 Training.presentation.contains(filters.search),
             )
@@ -367,14 +376,53 @@ class StudentApplicationService:
             statement = statement.where(StudentApplication.target_session_id == filters.training_session_id)
             count_query = count_query.where(StudentApplication.target_session_id == filters.training_session_id)
 
-        if filters.order_by == "created_at":
-            statement = statement.order_by(StudentApplication.created_at if filters.asc == "asc" else StudentApplication.created_at.desc())
-
         total_count = (await self.session.execute(count_query)).scalar_one()
+
+        # Prioritize TRANSFER (payment_method == "TRANSFER" first)
+        priority = case(
+            (StudentApplication.payment_method == "TRANSFER", 0),
+            else_=1
+        )
+
+        if filters.order_by == "created_at":
+            statement = statement.order_by(priority, StudentApplication.created_at if filters.asc == "asc" else StudentApplication.created_at.desc())
+        elif filters.order_by == "application_number":
+            statement = statement.order_by(priority, StudentApplication.application_number if filters.asc == "asc" else StudentApplication.application_number.desc())
+        elif filters.order_by == "status":
+            statement = statement.order_by(priority, StudentApplication.status if filters.asc == "asc" else StudentApplication.status.desc())
 
         statement = statement.offset((filters.page - 1) * filters.page_size).limit(filters.page_size)
         result = await self.session.execute(statement)
-        return result.all(), total_count
+        applications = result.scalars().all()
+
+        # Convert to Pydantic models pour éviter les erreurs de validation
+        out_applications = []
+        for app in applications:
+            out_app = StudentApplicationOut(
+                id=app.id,
+                user_id=app.user_id,
+                training_id=app.training_id,
+                target_session_id=app.target_session_id,
+                application_number=app.application_number,
+                status=app.status,
+                payment_id=app.payment_id,
+                payment_method=app.payment_method or "ONLINE",  # Fallback str
+                refusal_reason=app.refusal_reason,
+                registration_fee=app.registration_fee,
+                training_fee=app.training_fee,
+                currency=app.currency,
+                training_title=app.training.title if app.training else "N/A",  # Maintenant préchargé
+                training_session_start_date=app.training_session.start_date if app.training_session else None,
+                training_session_end_date=app.training_session.end_date if app.training_session else None,
+                user_email=app.user.email if app.user else "N/A",  # Préchargé
+                user_first_name=app.user.first_name if app.user else "N/A",
+                user_last_name=app.user.last_name if app.user else "N/A",
+                created_at=app.created_at,
+                updated_at=app.updated_at
+            )
+            out_applications.append(out_app)
+
+        return out_applications, total_count
     
     async def delete_student_application(self, application: StudentApplication) -> StudentApplication:
         """Delete student application"""

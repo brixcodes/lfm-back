@@ -110,7 +110,7 @@ class StudentApplication(CustomBaseModel, table=True):
     currency: str = Field(default="EUR")
     installment_percentage: Optional[List[float]] = Field(default=None, sa_column=Column(JSON))
     payment_id : Optional[str] = Field(default=None,foreign_key="payments.id", nullable=True)
-    payment_method: Optional[str] = Field(default=None, max_length=30, description="Méthode de paiement choisie par le candidat")
+    payment_method: Optional[str] = Field(default="ONLINE", max_length=20, description="Méthode de paiement : ONLINE ou TRANSFER")
 
     training: Training = Relationship()
     training_session: TrainingSession = Relationship()
