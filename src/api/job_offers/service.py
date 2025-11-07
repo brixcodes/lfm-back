@@ -159,13 +159,15 @@ class JobOfferService:
         result = await self.session.execute(statement)
         return result.scalars().first()
 
-    async def get_full_job_application_by_id(self, application_id: int) -> Optional[JobApplication]:
+    async def get_full_job_application_by_id(self, application_id: int, email: Optional[str] = None) -> Optional[JobApplication]:
         statement = (
             select(JobApplication)
             .where(JobApplication.id == application_id, JobApplication.delete_at.is_(None))
             .options(selectinload(JobApplication.job_offer))
             .options(selectinload(JobApplication.attachments))
         )
+        if email:
+            statement = statement.where(JobApplication.email == email)
         result = await self.session.execute(statement)
         return result.scalars().first()
 
