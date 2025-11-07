@@ -1,5 +1,5 @@
 {% extends "fr/partials/email_base.html" %}
-{% block title %}Login Alert{% endblock %}
+{% block title %}Alerte de connexion{% endblock %}
 {% block head %}
     {{ super() }}
     <style type="text/css">
@@ -13,13 +13,13 @@
             <tr>
                 <td>
                     <div >
-                        <h2 style="color: #00843d;">Login Alert</h2>
-                        <p>Hi there,</p>
-                        <p>We wanted to let you know that your account was successfully logged into on {{ device }}  at {{ time }} . If this was you, no further action is needed.    </p>
+                        <h2 style="color: #d14b6b;">Alerte de connexion</h2>
+                        <p>Bonjour,</p>
+                        <p>Nous tenons à vous informer qu'une connexion à votre compte a été effectuée depuis {{ device }} le {{ time }}. Si c'était vous, aucune action supplémentaire n'est nécessaire.</p>
 
-                        <p>If you didn't attempt to log in, please contact our support team immediately and change your password for added security.</p>
-                        <p><em>Stay secure,</em></p>
-                        <p style="margin-top: 30px;">Thank you,<br>The {{app_name}} Team</p>
+                        <p>Si vous n'avez pas tenté de vous connecter, veuillez contacter immédiatement notre équipe de support et changer votre mot de passe pour plus de sécurité.</p>
+                        <p><em>Restez en sécurité,</em></p>
+                        <p style="margin-top: 30px;">Merci,<br>L'équipe {{app_name}}</p>
                     </div>
                 </td>
             </tr>

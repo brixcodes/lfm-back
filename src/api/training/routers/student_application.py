@@ -49,7 +49,23 @@ async def get_student_application_admin(
                 error_code=ErrorMessage.STUDENT_APPLICATION_NOT_FOUND.value,
             ).model_dump(),
         )
-    return {"message": "Student application fetched successfully", "data": full_application}
+    # Sérialiser avec Pydantic pour inclure les attachements
+    from src.api.training.schemas import StudentApplicationFullOut, StudentAttachmentOut
+    data = StudentApplicationFullOut.model_validate(full_application, from_attributes=True)
+    # Convertir les attachements si présents
+    if full_application.attachments:
+        data.attachments = [
+            StudentAttachmentOut(
+                id=att.id,
+                application_id=att.application_id,
+                document_type=att.document_type,
+                file_path=att.file_path,
+                created_at=att.created_at,
+                updated_at=att.updated_at
+            )
+            for att in full_application.attachments
+        ]
+    return {"message": "Student application fetched successfully", "data": data}
 
 @router.post("/student-applications/{application_id}/status", response_model=StudentApplicationOutSuccess, tags=["Student Application"])
 async def change_student_application_status_admin(
@@ -121,7 +137,7 @@ async def create_student_application(
     ]:
         # Démarrer une nouvelle candidature
         application = await student_app_service.start_student_application(input)
-
+    
     # 2️⃣ Recharger la candidature complète (relations incluses)
     application = await student_app_service.get_full_student_application_by_id(
         application.id,
@@ -199,7 +215,21 @@ async def create_student_application(
             # tu peux choisir de lever une exception à ce stade. Ici on continue et renvoie payment = None
 
     # 5️⃣ Construire la réponse finale avec la candidature complète + payment
+    from src.api.training.schemas import StudentAttachmentOut
     data_model = StudentApplicationFullOut.model_validate(application, from_attributes=True)
+    # Convertir les attachements si présents
+    if application.attachments:
+        data_model.attachments = [
+            StudentAttachmentOut(
+                id=att.id,
+                application_id=att.application_id,
+                document_type=att.document_type,
+                file_path=att.file_path,
+                created_at=att.created_at,
+                updated_at=att.updated_at
+            )
+            for att in application.attachments
+        ]
     data = data_model.model_dump()
     data["payment"] = payment
 
@@ -240,7 +270,23 @@ async def get_my_student_application(
                 error_code=ErrorMessage.STUDENT_APPLICATION_NOT_FOUND.value,
             ).model_dump(),
         )
-    return {"message": "Student application fetched successfully", "data": full_application}
+    # Sérialiser avec Pydantic pour inclure les attachements
+    from src.api.training.schemas import StudentApplicationFullOut, StudentAttachmentOut
+    data = StudentApplicationFullOut.model_validate(full_application, from_attributes=True)
+    # Convertir les attachements si présents
+    if full_application.attachments:
+        data.attachments = [
+            StudentAttachmentOut(
+                id=att.id,
+                application_id=att.application_id,
+                document_type=att.document_type,
+                file_path=att.file_path,
+                created_at=att.created_at,
+                updated_at=att.updated_at
+            )
+            for att in full_application.attachments
+        ]
+    return {"message": "Student application fetched successfully", "data": data}
 
 
 @router.put("/my-student-applications/{application_id}", response_model=StudentApplicationOutSuccess, tags=["My Student Application"])

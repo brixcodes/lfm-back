@@ -253,6 +253,7 @@ class StudentApplicationOut(BaseModel):
     user_email: str
     user_first_name: str
     user_last_name: str
+    attachments: Optional[List[StudentAttachmentOut]] = None
 
     created_at: datetime
     updated_at: datetime
@@ -309,6 +310,8 @@ class StudentApplicationFullOut(BaseModel):
     training_session: Optional[TrainingSessionOut] = None
     # Ajout: objet payment pour exposer le lien de paiement
     payment: Optional[dict] = None
+    # Ajout: liste des attachements
+    attachments: Optional[List[StudentAttachmentOut]] = None
     # user: Optional[UserOut] = None  # Import from system schemas if needed
 
 # Success Response Schemas
