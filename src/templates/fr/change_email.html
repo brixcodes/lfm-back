@@ -1,5 +1,5 @@
 {% extends "fr/partials/email_base.html" %}
-{% block title %}Index{% endblock %}
+{% block title %}Confirmation du changement d'e-mail{% endblock %}
 {% block head %}
     {{ super() }}
     <style type="text/css">
@@ -14,13 +14,13 @@
             <tr>
                 <td>
                     <div >
-                        <h2 style="color: #00843d;">Confirm Your Email Change</h2>
-                        <p>Hi there,</p>
-                        <p>To confirm your request to change your email, please use the code below:</p>
-                        <h3 style="color: #00843d;">{{code}}</h3>
-                        <p>This code will expire in {{time}} minutes.</p>
-                        <p>If you did not request to change your email, please ignore this email.</p>
-                        <p style="margin-top: 30px;">Thank you,<br>The {{app_name}} Team</p>
+                        <h2 style="color: #d14b6b;">Confirmez votre changement d'e-mail</h2>
+                        <p>Bonjour,</p>
+                        <p>Pour confirmer votre demande de changement d'e-mail, veuillez utiliser le code ci-dessous :</p>
+                        <h3 style="color: #d14b6b;">{{code}}</h3>
+                        <p>Ce code expirera dans {{time}} minutes.</p>
+                        <p>Si vous n'avez pas demandé de changement d'e-mail, veuillez ignorer cet e-mail.</p>
+                        <p style="margin-top: 30px;">Merci,<br>L'équipe {{app_name}}</p>
                     </div>    
                 </td>
             </tr>

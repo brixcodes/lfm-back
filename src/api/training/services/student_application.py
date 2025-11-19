@@ -399,8 +399,24 @@ class StudentApplicationService:
         applications = result.scalars().all()
 
         # Convert to Pydantic models pour éviter les erreurs de validation
+        from src.api.training.schemas import StudentAttachmentOut
         out_applications = []
         for app in applications:
+            # Convertir les attachements
+            attachments = None
+            if app.attachments:
+                attachments = [
+                    StudentAttachmentOut(
+                        id=att.id,
+                        application_id=att.application_id,
+                        document_type=att.document_type,
+                        file_path=att.file_path,
+                        created_at=att.created_at,
+                        updated_at=att.updated_at
+                    )
+                    for att in app.attachments
+                ]
+            
             out_app = StudentApplicationOut(
                 id=app.id,
                 user_id=app.user_id,
@@ -420,6 +436,7 @@ class StudentApplicationService:
                 user_email=app.user.email if app.user else "N/A",  # Préchargé
                 user_first_name=app.user.first_name if app.user else "N/A",
                 user_last_name=app.user.last_name if app.user else "N/A",
+                attachments=attachments,
                 created_at=app.created_at,
                 updated_at=app.updated_at
             )

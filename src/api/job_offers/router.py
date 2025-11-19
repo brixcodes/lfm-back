@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Form, File, HTTPException, Query, status
 from fastapi import UploadFile
 
-from src.api.auth.utils import check_permissions
+from src.api.auth.utils import check_permissions, get_current_active_user
 from src.api.payments.schemas import PaymentInitInput
 from src.api.payments.service import PaymentService
 from src.api.user.models import PermissionEnum, User
@@ -32,6 +32,7 @@ from src.api.job_offers.schemas import (
     UpdateJobOfferStatusInput,
 )
 from src.api.job_offers.dependencies import get_job_offer, get_job_application, get_job_attachment
+from src.api.job_offers.models import ApplicationStatusEnum
 
 
 router = APIRouter(tags=["Job Offers"])
@@ -439,3 +440,24 @@ async def update_application_by_candidate(
     # Update application
     updated_application = await job_offer_service.update_application_by_candidate(application, input)
     return {"message": "Application updated successfully", "data": updated_application}
+
+@router.delete("/job-applications/{application_id}", response_model=JobApplicationOutSuccess, tags=["Job Application"])
+async def delete_job_application(
+    application_id: int,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    job_offer_service: JobOfferService = Depends(),
+):
+    """Delete a job application by user"""
+    full_application = await job_offer_service.get_full_job_application_by_id(application_id=application_id, email=current_user.email)
+    if full_application is None or full_application.status == ApplicationStatusEnum.APPROVED.value or full_application.status == ApplicationStatusEnum.REFUSED.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=BaseOutFail(
+                message=ErrorMessage.JOB_APPLICATION_NOT_FOUND.description,
+                error_code=ErrorMessage.JOB_APPLICATION_NOT_FOUND.value,
+            ).model_dump(),
+        )
+    
+    await job_offer_service.delete_job_application(full_application)
+    
+    return {"message": "Job application deleted successfully", "data": full_application}
