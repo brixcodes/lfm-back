@@ -596,7 +596,9 @@ class CinetPayService:
             print(f"URL: https://api-checkout.cinetpay.com/v2/payment")
             print(f"Transaction ID (cleaned): {payment_data.transaction_id}")
             print(f"Transaction ID length: {len(payment_data.transaction_id)}")
-            print(f"Transaction ID contains special chars: {bool(re.search(r'[#/$_&]', payment_data.transaction_id))}")
+            transaction_id_pattern = r'[#/$_&]'
+            transaction_id_has_special = bool(re.search(transaction_id_pattern, payment_data.transaction_id))
+            print(f"Transaction ID contains special chars: {transaction_id_has_special}")
             print(f"Payload: {json.dumps(payload, indent=2, ensure_ascii=False)}")
             
             # Headers pour éviter les problèmes CORS
