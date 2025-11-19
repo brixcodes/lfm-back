@@ -2,6 +2,7 @@
 import asyncio
 import json
 import math
+import re
 from celery import shared_task
 from fastapi import Depends
 import httpx
@@ -20,6 +21,7 @@ from src.api.user.models import User, UserStatusEnum, UserTypeEnum
 from src.api.user.schemas import CreateUserInput
 from src.api.user.service import UserService
 from src.helper.notifications import NotificationService
+from src.helper.utils import clean_payment_description
 import secrets
 import string
 from src.redis_client import get_from_redis, set_to_redis
@@ -232,11 +234,14 @@ class PaymentService:
         final_amount = PaymentService.round_up_to_nearest_5(payment_data.amount * product_currency_to_payment_currency_rate)
         print(f"CinetPay Amount - Final Amount: {final_amount} {payment_currency}")
         
+        # Nettoyer la description pour retirer les caractères spéciaux non autorisés par CinetPay
+        cleaned_description = clean_payment_description(payment_data.description or "")
+        
         cinetpay_data = CinetPayInit(
             transaction_id=payment.transaction_id,
             amount= final_amount,
             currency=payment_currency,
-            description=payment_data.description,
+            description=cleaned_description,
             meta=f"{payment_data.payable.__class__.__name__}-{payment_data.payable.id}",
             invoice_data={
                     "payable": payment.payable_type,
@@ -482,10 +487,21 @@ class CinetPayService:
         print(f"CinetPay Channels: {channels_param}")
         print(f"CinetPay Card Payments Enabled: {settings.CINETPAY_ENABLE_CARD_PAYMENTS}")
         
+        # Nettoyer la description pour retirer les caractères spéciaux non autorisés par CinetPay
+        # La description a déjà été nettoyée dans initiate_payment, mais on la nettoie à nouveau ici
+        # pour être sûr qu'elle ne contient aucun caractère spécial qui pourrait bloquer la validation
+        original_description = payment_data.description or ""
+        cleaned_description = clean_payment_description(original_description)
+        print(f"=== DESCRIPTION CLEANING (FINAL CHECK) ===")
+        print(f"Original: {original_description}")
+        print(f"Cleaned: {cleaned_description}")
+        print(f"Length: {len(cleaned_description)} characters")
+        print(f"Contains special chars: {bool(re.search(r'[^a-zA-Z0-9\s\-.]', cleaned_description))}")
+        
         payload = {
             "amount": payment_data.amount,
             "currency": payment_data.currency,
-            "description": payment_data.description,
+            "description": cleaned_description,
             "apikey": settings.CINETPAY_API_KEY,
             "site_id": settings.CINETPAY_SITE_ID,
             "transaction_id": payment_data.transaction_id,
