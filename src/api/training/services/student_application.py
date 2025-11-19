@@ -204,6 +204,23 @@ class StudentApplicationService:
 
         fullname = f"{training.title} – {start_str} {cohort}"
         
+        # Récupérer les informations de l'utilisateur pour CinetPay
+        from src.api.user.models import Address
+        user_stmt = (
+            select(User)
+            .where(User.id == application.user_id)
+            .options(selectinload(User.addresses))
+        )
+        user_res = await self.session.execute(user_stmt)
+        user = user_res.scalars().first()
+        
+        # Récupérer l'adresse principale de l'utilisateur
+        primary_address = None
+        if user and user.addresses:
+            primary_address = next((addr for addr in user.addresses if addr.address_type == "PRIMARY"), None)
+            if not primary_address:
+                primary_address = user.addresses[0] if user.addresses else None
+        
         # Importation différée pour éviter l'importation circulaire
         from src.api.payments.service import PaymentService
         payment_service = PaymentService(self.session)
@@ -216,6 +233,15 @@ class StudentApplicationService:
             payment_provider="CINETPAY",
             payment_method="WALLET",  # Méthode par défaut pour les formations
             subscription_type="FORMATION",
+            customer_name=user.last_name if user else None,
+            customer_surname=user.first_name if user else None,
+            customer_email=user.email if user else None,
+            customer_phone_number=user.mobile_number if user else None,
+            customer_address=primary_address.street if primary_address and primary_address.street else None,
+            customer_city=primary_address.city if primary_address and primary_address.city else None,
+            customer_country=primary_address.country_code if primary_address and primary_address.country_code else (user.country_code if user else None),
+            customer_state=primary_address.state if primary_address and primary_address.state else None,
+            customer_zip_code=primary_address.postal_code if primary_address and primary_address.postal_code else None,
         )
         try :
             payment = await payment_service.initiate_payment(payment_input)
@@ -246,6 +272,23 @@ class StudentApplicationService:
         cohort = f"Cohort {target_session.id[:6].upper()}"
         fullname = f"{training.title} – {start_str} {cohort}"
 
+        # Récupérer les informations de l'utilisateur pour CinetPay
+        from src.api.user.models import Address
+        user_stmt = (
+            select(User)
+            .where(User.id == application.user_id)
+            .options(selectinload(User.addresses))
+        )
+        user_res = await self.session.execute(user_stmt)
+        user = user_res.scalars().first()
+        
+        # Récupérer l'adresse principale de l'utilisateur
+        primary_address = None
+        if user and user.addresses:
+            primary_address = next((addr for addr in user.addresses if addr.address_type == "PRIMARY"), None)
+            if not primary_address:
+                primary_address = user.addresses[0] if user.addresses else None
+
         from src.api.payments.service import PaymentService
         payment_service = PaymentService(self.session)
         description = clean_payment_description(f"Payment for training application fee of session {fullname}")
@@ -257,6 +300,15 @@ class StudentApplicationService:
             payment_provider="CINETPAY",
             payment_method="ONLINE",
             subscription_type="FORMATION",
+            customer_name=user.last_name if user else None,
+            customer_surname=user.first_name if user else None,
+            customer_email=user.email if user else None,
+            customer_phone_number=user.mobile_number if user else None,
+            customer_address=primary_address.street if primary_address and primary_address.street else None,
+            customer_city=primary_address.city if primary_address and primary_address.city else None,
+            customer_country=primary_address.country_code if primary_address and primary_address.country_code else (user.country_code if user else None),
+            customer_state=primary_address.state if primary_address and primary_address.state else None,
+            customer_zip_code=primary_address.postal_code if primary_address and primary_address.postal_code else None,
         )
         try:
             payment = await payment_service.initiate_payment(payment_input)
@@ -710,6 +762,23 @@ class StudentApplicationService:
 
         fullname = f"{training.title} – {start_str} {cohort}"
         
+        # Récupérer les informations de l'utilisateur pour CinetPay
+        from src.api.user.models import Address
+        user_stmt = (
+            select(User)
+            .where(User.id == user_id)
+            .options(selectinload(User.addresses))
+        )
+        user_res = await self.session.execute(user_stmt)
+        user = user_res.scalars().first()
+        
+        # Récupérer l'adresse principale de l'utilisateur
+        primary_address = None
+        if user and user.addresses:
+            primary_address = next((addr for addr in user.addresses if addr.address_type == "PRIMARY"), None)
+            if not primary_address:
+                primary_address = user.addresses[0] if user.addresses else None
+        
         # Importation différée pour éviter l'importation circulaire
         from src.api.payments.service import PaymentService
         payment_service = PaymentService(self.session)
@@ -720,6 +789,15 @@ class StudentApplicationService:
             product_currency=training_session.currency,
             description=description,
             payment_provider="CINETPAY",
+            customer_name=user.last_name if user else None,
+            customer_surname=user.first_name if user else None,
+            customer_email=user.email if user else None,
+            customer_phone_number=user.mobile_number if user else None,
+            customer_address=primary_address.street if primary_address and primary_address.street else None,
+            customer_city=primary_address.city if primary_address and primary_address.city else None,
+            customer_country=primary_address.country_code if primary_address and primary_address.country_code else (user.country_code if user else None),
+            customer_state=primary_address.state if primary_address and primary_address.state else None,
+            customer_zip_code=primary_address.postal_code if primary_address and primary_address.postal_code else None,
         )
         try :
             payment = await payment_service.initiate_payment(payment_input)

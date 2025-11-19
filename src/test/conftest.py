@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 from sqlalchemy.pool import StaticPool
 
-from src.api.auth.schemas import RegisterInput
+# from src.api.auth.schemas import RegisterInput  # Commenté si non disponible
 from src.api.user.service import UserService
 from src.database import get_session
 from src.main import app
