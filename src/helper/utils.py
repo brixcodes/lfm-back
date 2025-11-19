@@ -1,6 +1,7 @@
 from typing import Optional
 import os
 import smtplib
+import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from jinja2 import Environment, FileSystemLoader
@@ -18,6 +19,56 @@ push_service = FCMNotification(
 
 env = Environment(loader=FileSystemLoader('src/templates'))
 
+
+def clean_payment_description(description: str, max_length: int = 150) -> str:
+    """
+    Nettoie la description de paiement en retirant les caractères spéciaux non autorisés.
+    
+    L'opérateur de paiement n'autorise pas les caractères spéciaux dans le paramètre "description".
+    Cette fonction retire les caractères spéciaux et les remplace par des équivalents simples.
+    
+    Args:
+        description (str): La description originale avec potentiellement des caractères spéciaux.
+        max_length (int): Longueur maximale de la description (défaut: 150 caractères).
+    
+    Returns:
+        str: La description nettoyée sans caractères spéciaux, limitée à max_length caractères.
+    
+    Examples:
+        >>> clean_payment_description("Formation d'Auxiliaires (AVUJ) – January 2026")
+        "Formation dAuxiliaires AVUJ - January 2026"
+    """
+    if not description:
+        return "Payment"
+    
+    # Remplacer les tirets cadratins (–, —) par des tirets simples (-)
+    description = description.replace('–', '-').replace('—', '-')
+    
+    # Supprimer les apostrophes
+    description = description.replace("'", "").replace("'", "").replace("'", "")
+    
+    # Supprimer les parenthèses mais garder leur contenu
+    description = description.replace('(', '').replace(')', '')
+    
+    # Supprimer les autres caractères spéciaux non autorisés
+    # Garder seulement les lettres, chiffres, espaces, tirets simples et points
+    description = re.sub(r'[^a-zA-Z0-9\s\-.]', '', description)
+    
+    # Remplacer les espaces multiples par un seul espace
+    description = re.sub(r'\s+', ' ', description)
+    
+    # Supprimer les espaces en début et fin
+    description = description.strip()
+    
+    # Limiter la longueur de la description
+    if len(description) > max_length:
+        description = description[:max_length].rsplit(' ', 1)[0]  # Couper au dernier mot complet
+    
+    # S'assurer que la description n'est pas vide après nettoyage
+    if not description or len(description.strip()) == 0:
+        return "Payment"
+    
+    return description
 
 
 class NotificationHelper :

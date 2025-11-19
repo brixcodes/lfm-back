@@ -13,6 +13,7 @@ from src.api.user.schemas import CreateUserInput
 from src.api.user.service import UserService
 from src.api.payments.service import PaymentService
 from src.helper.notifications import NotificationService
+from src.helper.utils import clean_payment_description
 from fastapi import Request
 from .models import CabinetApplication, ApplicationFee, CabinetApplicationStatus, PaymentStatus
 from .schemas import (
@@ -175,11 +176,12 @@ class CabinetApplicationService:
         try:
             print("Preparing payment input...")
             from src.api.payments.schemas import PaymentInitInput
+            description = clean_payment_description(f"Frais de candidature cabinet LAFAOM - {application.company_name}")
             payment_input = PaymentInitInput(
                 payable=application,
                 amount=application.payment_amount,
                 product_currency=application.payment_currency,
-                description=f"Frais de candidature cabinet LAFAOM - {application.company_name}",
+                description=description,
                 payment_provider="CINETPAY",
                 customer_name=application.company_name,
                 customer_surname="Cabinet",

@@ -9,6 +9,7 @@ from src.api.payments.schemas import PaymentInitInput
 from src.api.payments.service import PaymentService
 from src.api.user.models import PermissionEnum, User
 from src.helper.schemas import BaseOutFail, ErrorMessage
+from src.helper.utils import clean_payment_description
 
 from src.api.job_offers.service import JobOfferService
 from src.api.job_offers.schemas import (
@@ -292,11 +293,12 @@ async def create_job_application(
         }}
 
     # Default ONLINE: initiate payment
+    description = clean_payment_description(f"Frais de candidature au poste de {job_offer.title}")
     payment_input = PaymentInitInput(
         payable=application,
         amount=job_offer.submission_fee,
         product_currency=job_offer.currency,
-        description= f"Frais de candidature au poste de {job_offer.title}",
+        description=description,
         payment_provider="CINETPAY",
         customer_name=input.last_name,
         customer_surname=input.first_name,

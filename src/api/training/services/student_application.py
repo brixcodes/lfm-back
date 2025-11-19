@@ -36,6 +36,7 @@ from src.helper.file_helper import FileHelper
 from src.helper.moodle import MoodleService
 from src.helper.notifications import SendPasswordNotification
 from src.helper.schemas import BaseOutFail, ErrorMessage
+from src.helper.utils import clean_payment_description
 
 try:
     from src.helper.moodle import (
@@ -206,11 +207,12 @@ class StudentApplicationService:
         # Importation différée pour éviter l'importation circulaire
         from src.api.payments.service import PaymentService
         payment_service = PaymentService(self.session)
+        description = clean_payment_description(f"Payment for training application fee of session {fullname}")
         payment_input = PaymentInitInput(
             payable=application,
             amount=amount,
             product_currency=target_session.currency,
-            description=f"Payment for training application fee of session {fullname}",
+            description=description,
             payment_provider="CINETPAY",
             payment_method="WALLET",  # Méthode par défaut pour les formations
             subscription_type="FORMATION",
@@ -246,11 +248,12 @@ class StudentApplicationService:
 
         from src.api.payments.service import PaymentService
         payment_service = PaymentService(self.session)
+        description = clean_payment_description(f"Payment for training application fee of session {fullname}")
         payment_input = PaymentInitInput(
             payable=application,
             amount=amount,
             product_currency=target_session.currency,
-            description=f"Payment for training application fee of session {fullname}",
+            description=description,
             payment_provider="CINETPAY",
             payment_method="ONLINE",
             subscription_type="FORMATION",
@@ -693,11 +696,12 @@ class StudentApplicationService:
         # Importation différée pour éviter l'importation circulaire
         from src.api.payments.service import PaymentService
         payment_service = PaymentService(self.session)
+        description = clean_payment_description(f"Payment for training fee of session {fullname}")
         payment_input = PaymentInitInput(
             payable=new_payment,
             amount=input.amount,
             product_currency=training_session.currency,
-            description=f"Payment for training fee of session {fullname}",
+            description=description,
             payment_provider="CINETPAY",
         )
         try :
