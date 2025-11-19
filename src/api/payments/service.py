@@ -501,7 +501,9 @@ class CinetPayService:
         print(f"Original: {original_description}")
         print(f"Cleaned: {cleaned_description}")
         print(f"Length: {len(cleaned_description)} characters")
-        print(f"Contains special chars: {bool(re.search(r'[^a-zA-Z0-9\s\-.]', cleaned_description))}")
+        pattern = r'[^a-zA-Z0-9\s\-.]'
+        has_special_chars = bool(re.search(pattern, cleaned_description))
+        print(f"Contains special chars: {has_special_chars}")
         
         payload = {
             "amount": payment_data.amount,
@@ -543,26 +545,51 @@ class CinetPayService:
         else:
             payload["customer_phone_number"] = "+221123456789"  # Numéro par défaut Sénégal
         
+        # S'assurer que tous les champs obligatoires sont remplis
         payload["customer_address"] = clean_cinetpay_string(payment_data.customer_address or "Dakar Senegal", max_length=200)
         payload["customer_city"] = clean_cinetpay_string(payment_data.customer_city or "Dakar", max_length=100)
+        
+        # Code pays - forcer SN (Sénégal) si non fourni
         if payment_data.customer_country:
-            # S'assurer que le code pays est correct pour le Sénégal
-            if payment_data.customer_country.upper() in ["SN", "SENEGAL", "SENEGAL"]:
+            country_code = payment_data.customer_country.upper().strip()
+            if country_code in ["SN", "SENEGAL"]:
                 payload["customer_country"] = "SN"
             else:
                 payload["customer_country"] = "SN"  # Forcer le Sénégal pour la cohérence
         else:
             payload["customer_country"] = "SN"
             
-        if payment_data.customer_state:
-            payload["customer_state"] = "SN"  # Sénégal
-        else:
-            payload["customer_state"] = "SN"
+        # State - utiliser le code pays
+        payload["customer_state"] = "SN"
             
+        # Code postal - valeur par défaut si non fourni
         if payment_data.customer_zip_code:
-            payload["customer_zip_code"] = payment_data.customer_zip_code
+            payload["customer_zip_code"] = str(payment_data.customer_zip_code).strip()[:10]  # Limiter à 10 caractères
         else:
             payload["customer_zip_code"] = "065100"
+        
+        # Vérification finale : s'assurer qu'aucun champ obligatoire n'est vide
+        required_fields = ["customer_name", "customer_surname", "customer_email", "customer_phone_number", 
+                          "customer_address", "customer_city", "customer_country", "customer_zip_code"]
+        for field in required_fields:
+            if not payload.get(field) or payload[field].strip() == "":
+                print(f"WARNING: Field {field} is empty, using default value")
+                if field == "customer_name":
+                    payload[field] = "Client"
+                elif field == "customer_surname":
+                    payload[field] = "LAFAOM"
+                elif field == "customer_email":
+                    payload[field] = "client@lafaom.com"
+                elif field == "customer_phone_number":
+                    payload[field] = "+221123456789"
+                elif field == "customer_address":
+                    payload[field] = "Dakar Senegal"
+                elif field == "customer_city":
+                    payload[field] = "Dakar"
+                elif field == "customer_country":
+                    payload[field] = "SN"
+                elif field == "customer_zip_code":
+                    payload[field] = "065100"
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             print(f"=== CINETPAY API REQUEST ===")
