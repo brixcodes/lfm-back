@@ -220,7 +220,8 @@ class PaymentService:
 
         # Générer un transaction_id sans caractères spéciaux pour CinetPay
         # CinetPay n'accepte pas certains caractères spéciaux dans transaction_id
-        transaction_id = str(uuid.uuid4()).replace('-', '')  # Retirer les tirets de l'UUID
+        # Limiter à 25 caractères maximum selon la documentation CinetPay
+        transaction_id = str(uuid.uuid4()).replace('-', '')[:25]  # Retirer les tirets et limiter à 25 caractères
         
         payment = Payment(
             transaction_id=transaction_id,
@@ -516,7 +517,7 @@ class CinetPayService:
             "invoice_data": {
                 "Service": clean_cinetpay_string("LAFAOM-MAO", max_length=50),
                 "Montant": f"{payment_data.amount} {payment_data.currency}",
-                "Reference": payment_data.transaction_id[:8]  # Déjà nettoyé (pas de tirets)
+                "Reference": payment_data.transaction_id[:20]  # Limiter à 20 caractères
             },
             "lang": "fr",  # Langue française pour le guichet de paiement
         }
