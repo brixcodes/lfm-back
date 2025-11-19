@@ -21,7 +21,7 @@ from src.api.user.models import User, UserStatusEnum, UserTypeEnum
 from src.api.user.schemas import CreateUserInput
 from src.api.user.service import UserService
 from src.helper.notifications import NotificationService
-from src.helper.utils import clean_payment_description
+from src.helper.utils import clean_payment_description, clean_cinetpay_string
 import secrets
 import string
 from src.redis_client import get_from_redis, set_to_redis
@@ -218,8 +218,12 @@ class PaymentService:
             usd_to_product_currency_rate = 1.0 if payment_data.product_currency == "USD" else 0.0017
         
 
+        # Générer un transaction_id sans caractères spéciaux pour CinetPay
+        # CinetPay n'accepte pas certains caractères spéciaux dans transaction_id
+        transaction_id = str(uuid.uuid4()).replace('-', '')  # Retirer les tirets de l'UUID
+        
         payment = Payment(
-            transaction_id=str(uuid.uuid4()),
+            transaction_id=transaction_id,
             product_amount=payment_data.amount,
             product_currency=payment_data.product_currency,
             payment_currency=payment_currency,
@@ -508,20 +512,21 @@ class CinetPayService:
             "channels": channels_param,
             "return_url": settings.CINETPAY_RETURN_URL,
             "notify_url": settings.CINETPAY_NOTIFY_URL,
-            "meta": payment_data.meta,
+            "meta": clean_cinetpay_string(payment_data.meta, max_length=200),
             "invoice_data": {
-                "Service": "LAFAOM-MAO",
+                "Service": clean_cinetpay_string("LAFAOM-MAO", max_length=50),
                 "Montant": f"{payment_data.amount} {payment_data.currency}",
-                "Reference": payment_data.transaction_id[:8]
+                "Reference": payment_data.transaction_id[:8]  # Déjà nettoyé (pas de tirets)
             },
             "lang": "fr",  # Langue française pour le guichet de paiement
         }
         
         # Informations client OBLIGATOIRES pour activer l'option carte bancaire.
         # Selon la documentation CinetPay, toutes ces informations sont requises
-        payload["customer_name"] = payment_data.customer_name or "Client"
-        payload["customer_surname"] = payment_data.customer_surname or "LAFAOM"
-        payload["customer_email"] = payment_data.customer_email or "client@lafaom.com"
+        # Nettoyer tous les champs pour éviter les caractères spéciaux
+        payload["customer_name"] = clean_cinetpay_string(payment_data.customer_name or "Client", max_length=100)
+        payload["customer_surname"] = clean_cinetpay_string(payment_data.customer_surname or "LAFAOM", max_length=100)
+        payload["customer_email"] = (payment_data.customer_email or "client@lafaom.com").strip()  # Email ne doit pas être nettoyé de la même manière
         
         # Formater le numéro de téléphone selon la documentation CinetPay
         if payment_data.customer_phone_number:
@@ -537,8 +542,8 @@ class CinetPayService:
         else:
             payload["customer_phone_number"] = "+221123456789"  # Numéro par défaut Sénégal
         
-        payload["customer_address"] = payment_data.customer_address or "Dakar, Sénégal"
-        payload["customer_city"] = payment_data.customer_city or "Dakar"
+        payload["customer_address"] = clean_cinetpay_string(payment_data.customer_address or "Dakar Senegal", max_length=200)
+        payload["customer_city"] = clean_cinetpay_string(payment_data.customer_city or "Dakar", max_length=100)
         if payment_data.customer_country:
             # S'assurer que le code pays est correct pour le Sénégal
             if payment_data.customer_country.upper() in ["SN", "SENEGAL", "SENEGAL"]:
@@ -561,7 +566,10 @@ class CinetPayService:
         async with httpx.AsyncClient(timeout=30.0) as client:
             print(f"=== CINETPAY API REQUEST ===")
             print(f"URL: https://api-checkout.cinetpay.com/v2/payment")
-            print(f"Payload: {json.dumps(payload, indent=2)}")
+            print(f"Transaction ID (cleaned): {payment_data.transaction_id}")
+            print(f"Transaction ID length: {len(payment_data.transaction_id)}")
+            print(f"Transaction ID contains special chars: {bool(re.search(r'[#/$_&]', payment_data.transaction_id))}")
+            print(f"Payload: {json.dumps(payload, indent=2, ensure_ascii=False)}")
             
             # Headers pour éviter les problèmes CORS
             headers = {

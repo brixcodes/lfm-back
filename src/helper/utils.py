@@ -20,6 +20,51 @@ push_service = FCMNotification(
 env = Environment(loader=FileSystemLoader('src/templates'))
 
 
+def clean_cinetpay_string(value: str, max_length: int = 150, allow_dashes: bool = True) -> str:
+    """
+    Nettoie une chaîne de caractères pour CinetPay en retirant les caractères spéciaux non autorisés.
+    
+    Args:
+        value (str): La chaîne originale.
+        max_length (int): Longueur maximale (défaut: 150).
+        allow_dashes (bool): Autoriser les tirets simples (défaut: True).
+    
+    Returns:
+        str: La chaîne nettoyée.
+    """
+    if not value:
+        return ""
+    
+    # Remplacer les tirets cadratins (–, —) par des tirets simples (-)
+    value = value.replace('–', '-').replace('—', '-')
+    
+    # Supprimer les apostrophes
+    value = value.replace("'", "").replace("'", "").replace("'", "")
+    
+    # Supprimer les parenthèses mais garder leur contenu
+    value = value.replace('(', '').replace(')', '')
+    
+    # Supprimer les autres caractères spéciaux non autorisés
+    if allow_dashes:
+        # Garder lettres, chiffres, espaces, tirets simples et points
+        value = re.sub(r'[^a-zA-Z0-9\s\-.]', '', value)
+    else:
+        # Garder seulement lettres, chiffres, espaces et points (pas de tirets)
+        value = re.sub(r'[^a-zA-Z0-9\s.]', '', value)
+    
+    # Remplacer les espaces multiples par un seul espace
+    value = re.sub(r'\s+', ' ', value)
+    
+    # Supprimer les espaces en début et fin
+    value = value.strip()
+    
+    # Limiter la longueur
+    if len(value) > max_length:
+        value = value[:max_length].rsplit(' ', 1)[0]
+    
+    return value
+
+
 def clean_payment_description(description: str, max_length: int = 150) -> str:
     """
     Nettoie la description de paiement en retirant les caractères spéciaux non autorisés.
@@ -41,34 +86,13 @@ def clean_payment_description(description: str, max_length: int = 150) -> str:
     if not description:
         return "Payment"
     
-    # Remplacer les tirets cadratins (–, —) par des tirets simples (-)
-    description = description.replace('–', '-').replace('—', '-')
-    
-    # Supprimer les apostrophes
-    description = description.replace("'", "").replace("'", "").replace("'", "")
-    
-    # Supprimer les parenthèses mais garder leur contenu
-    description = description.replace('(', '').replace(')', '')
-    
-    # Supprimer les autres caractères spéciaux non autorisés
-    # Garder seulement les lettres, chiffres, espaces, tirets simples et points
-    description = re.sub(r'[^a-zA-Z0-9\s\-.]', '', description)
-    
-    # Remplacer les espaces multiples par un seul espace
-    description = re.sub(r'\s+', ' ', description)
-    
-    # Supprimer les espaces en début et fin
-    description = description.strip()
-    
-    # Limiter la longueur de la description
-    if len(description) > max_length:
-        description = description[:max_length].rsplit(' ', 1)[0]  # Couper au dernier mot complet
+    cleaned = clean_cinetpay_string(description, max_length, allow_dashes=True)
     
     # S'assurer que la description n'est pas vide après nettoyage
-    if not description or len(description.strip()) == 0:
+    if not cleaned or len(cleaned.strip()) == 0:
         return "Payment"
     
-    return description
+    return cleaned
 
 
 class NotificationHelper :
