@@ -622,8 +622,8 @@ class CinetPayService:
         payload["customer_email"] = (payment_data.customer_email or "client@lafaom.com").strip()  # Email ne doit pas être nettoyé de la même manière
         
         # Formater le numéro de téléphone selon la documentation CinetPay
+        # IMPORTANT: Pour le paiement par carte bancaire, le numéro de téléphone est OBLIGATOIRE
         # Support pour lock_phone_number selon la documentation
-        lock_phone_number = False
         if payment_data.customer_phone_number:
             phone = payment_data.customer_phone_number.strip()
             # Si le numéro commence par +, on le garde tel quel
@@ -648,13 +648,29 @@ class CinetPayService:
                     phone = "+" + country_prefix + phone
             
             payload["customer_phone_number"] = phone
-            # Activer lock_phone_number si le numéro est fourni
-            # lock_phone_number permet de préfixer le numéro sur le guichet
-            # payload["lock_phone_number"] = lock_phone_number  # Optionnel selon besoin
         else:
-            # Numéro par défaut selon le pays
-            default_prefix = "237" if payment_data.currency == "XAF" else "221"
-            payload["customer_phone_number"] = f"+{default_prefix}123456789"
+            # Pour le paiement par carte bancaire, un numéro de téléphone valide est OBLIGATOIRE
+            # Générer un numéro par défaut valide selon le pays
+            # Déterminer le préfixe selon la devise ou le pays
+            if payment_data.currency == "XAF":
+                default_prefix = "237"  # Cameroun
+                default_phone = "657807309"  # Format valide pour le Cameroun
+            elif payment_data.currency == "XOF":
+                default_prefix = "221"  # Sénégal
+                default_phone = "771234567"  # Format valide pour le Sénégal
+            elif payment_data.customer_country:
+                country_prefixes = {
+                    "SN": "221", "CI": "225", "TG": "228", "BJ": "229",
+                    "ML": "223", "BF": "226", "CM": "237", "CD": "243", "GN": "224"
+                }
+                default_prefix = country_prefixes.get(payment_data.customer_country.upper(), "237")
+                default_phone = "657807309"  # Format par défaut
+            else:
+                default_prefix = "237"
+                default_phone = "657807309"
+            
+            payload["customer_phone_number"] = f"+{default_prefix}{default_phone}"
+            print(f"⚠️  Aucun numéro de téléphone fourni, utilisation du numéro par défaut: {payload['customer_phone_number']}")
         
         # S'assurer que tous les champs obligatoires sont remplis
         payload["customer_address"] = clean_cinetpay_string(payment_data.customer_address or "Dakar Senegal", max_length=200)
