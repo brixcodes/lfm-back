@@ -239,8 +239,32 @@ class PaymentService:
         final_amount = PaymentService.round_up_to_nearest_5(payment_data.amount * product_currency_to_payment_currency_rate)
         print(f"CinetPay Amount - Final Amount: {final_amount} {payment_currency}")
         
+        # Générer la description selon le type de payable
+        # Retirer les caractères spéciaux et utiliser des descriptions spécifiques
+        payable_type = payment_data.payable.__class__.__name__
+        original_description = (payment_data.description or "").lower()
+        
+        # Déterminer la description selon le type de payable
+        # Vérifier d'abord si c'est une formation (dans la description ou le type)
+        if "formation" in original_description or "training" in original_description or "training" in payable_type.lower():
+            base_description = "paiement des frais de formation"
+        elif payable_type == "StudentApplication":
+            # StudentApplication peut être inscription ou formation, vérifier la description
+            if "formation" in original_description or "training" in original_description:
+                base_description = "paiement des frais de formation"
+            else:
+                base_description = "paiement des frais inscription"
+        elif payable_type == "JobApplication":
+            base_description = "paiement des frais offre emploi"
+        elif payable_type == "CabinetApplication":
+            base_description = "paiement des frais candidature cabinet"
+        else:
+            # Utiliser la description fournie si aucun mapping n'est trouvé
+            base_description = payment_data.description or "paiement"
+        
         # Nettoyer la description pour retirer les caractères spéciaux non autorisés par CinetPay
-        cleaned_description = clean_payment_description(payment_data.description or "")
+        cleaned_description = clean_payment_description(base_description)
+        print(f"Description générée: {cleaned_description} (type: {payable_type})")
         
         # Construire les données CinetPay avec tous les champs requis (identique aux tests qui fonctionnent)
         cinetpay_data = CinetPayInit(
@@ -358,6 +382,20 @@ class PaymentService:
                         student_application.payment_id = payment.id
                         await self.session.commit()
                         await self.session.refresh(student_application)
+                        print(f"✅ StudentApplication {payment.payable_id} mis à jour avec payment_id: {payment.id}")
+                    
+                    elif payment.payable_type == "CabinetApplication":
+                        from src.api.cabinet.models import CabinetApplication, PaymentStatus
+                        from datetime import datetime
+                        statement = select(CabinetApplication).where(CabinetApplication.id == payment.payable_id)
+                        result = await self.session.execute(statement)
+                        cabinet_application = result.scalars().one()
+                        cabinet_application.payment_id = payment.id
+                        cabinet_application.payment_status = PaymentStatus.PAID
+                        cabinet_application.payment_date = datetime.utcnow()
+                        await self.session.commit()
+                        await self.session.refresh(cabinet_application)
+                        print(f"✅ CabinetApplication {payment.payable_id} mis à jour avec payment_id: {payment.id}")
                     
                 elif transaction_status in ["REFUSED", "CANCELLED"]:
                     payment.status = PaymentStatusEnum.REFUSED.value
@@ -429,6 +467,21 @@ class PaymentService:
                         training_fee_installment_payment = session.exec(training_fee_installment_payment_statement).first()
                         training_fee_installment_payment.payment_id = payment.id
                         session.commit()
+                    
+                    elif payment.payable_type == "CabinetApplication":
+                        from src.api.cabinet.models import CabinetApplication, PaymentStatus
+                        from datetime import datetime
+                        cabinet_application_statement = (
+                            select(CabinetApplication).where(CabinetApplication.id == payment.payable_id)
+                        )
+                        cabinet_application = session.exec(cabinet_application_statement).first()
+                        if cabinet_application:
+                            cabinet_application.payment_id = payment.id
+                            cabinet_application.payment_status = PaymentStatus.PAID
+                            cabinet_application.payment_date = datetime.utcnow()
+                            session.commit()
+                            session.refresh(cabinet_application)
+                            print(f"✅ CabinetApplication {payment.payable_id} mis à jour avec payment_id: {payment.id}")
                     
                 elif transaction_status in ["REFUSED", "CANCELLED"]:
                     payment.status = PaymentStatusEnum.REFUSED.value
