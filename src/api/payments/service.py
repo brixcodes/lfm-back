@@ -242,23 +242,29 @@ class PaymentService:
         # Nettoyer la description pour retirer les caractères spéciaux non autorisés par CinetPay
         cleaned_description = clean_payment_description(payment_data.description or "")
         
+        # Construire les données CinetPay avec tous les champs requis (identique aux tests qui fonctionnent)
         cinetpay_data = CinetPayInit(
             transaction_id=payment.transaction_id,
-            amount= final_amount,
+            amount=int(final_amount),  # S'assurer que c'est un entier
             currency=payment_currency,
             description=cleaned_description,
             meta=f"{payment_data.payable.__class__.__name__}-{payment_data.payable.id}",
             invoice_data={
-                    "payable": payment.payable_type,
-                    "payable_id": payment.payable_id
-                },
+                "payable": payment.payable_type,
+                "payable_id": payment.payable_id
+            },
             customer_name=payment_data.customer_name,
             customer_surname=payment_data.customer_surname,
             customer_email=payment_data.customer_email,
             customer_phone_number=payment_data.customer_phone_number,
             customer_address=payment_data.customer_address,
             customer_city=payment_data.customer_city,
-            customer_country=payment_data.customer_country
+            customer_country=payment_data.customer_country,
+            customer_state=payment_data.customer_state,
+            customer_zip_code=payment_data.customer_zip_code,
+            channels=payment_data.channels,
+            lock_phone_number=payment_data.lock_phone_number or False,
+            lang=payment_data.lang or "fr"
         )
         
         cinetpay_client = CinetPayService(self.session)
@@ -332,10 +338,14 @@ class PaymentService:
             else :
                 result = await  CinetPayService.check_cinetpay_payment_status(payment.transaction_id)
                 
-                if result["data"]["status"] : #== "ACCEPTED":
+                # Gérer les différents statuts selon la documentation CinetPay
+                transaction_status = result["data"].get("status", "")
+                
+                if transaction_status == "ACCEPTED":
                     payment.status = PaymentStatusEnum.ACCEPTED.value
                     cinetpay_payment.status = PaymentStatusEnum.ACCEPTED.value
-                    cinetpay_payment.amount_received = result["data"]["amount"]
+                    cinetpay_payment.amount_received = float(result["data"].get("amount", 0))
+                    cinetpay_payment.payment_method = result["data"].get("payment_method", "")
                     
                     if payment.payable_type == "JobApplication":
                         job_application_service = JobOfferService(session=self.session)
@@ -349,9 +359,15 @@ class PaymentService:
                         await self.session.commit()
                         await self.session.refresh(student_application)
                     
-                elif result["data"]["status"] == "REFUSED":
+                elif transaction_status in ["REFUSED", "CANCELLED"]:
                     payment.status = PaymentStatusEnum.REFUSED.value
                     cinetpay_payment.status = PaymentStatusEnum.REFUSED.value
+                    cinetpay_payment.error_code = result.get("code", "")
+                elif transaction_status in ["WAITING_FOR_CUSTOMER", "WAITING_CUSTOMER_TO_VALIDATE", 
+                                            "WAITING_CUSTOMER_PAYMENT", "WAITING_CUSTOMER_OTP_CODE"]:
+                    # Paiement en attente de confirmation
+                    payment.status = PaymentStatusEnum.PENDING.value
+                    cinetpay_payment.status = PaymentStatusEnum.PENDING.value
                 
                 await self.session.commit()
                 await self.session.refresh(payment)
@@ -378,11 +394,15 @@ class PaymentService:
                 result =   CinetPayService.check_cinetpay_payment_status_sync(payment.transaction_id)
                 print("result",result)
                 
-                if True : #result["data"]["status"]  == "ACCEPTED":
+                # Gérer les différents statuts selon la documentation CinetPay
+                transaction_status = result["data"].get("status", "")
+                
+                if transaction_status == "ACCEPTED":
                     print("ACCEPTED")
                     payment.status = PaymentStatusEnum.ACCEPTED.value
                     cinetpay_payment.status = PaymentStatusEnum.ACCEPTED.value
-                    cinetpay_payment.amount_received = result["data"]["amount"]
+                    cinetpay_payment.amount_received = float(result["data"].get("amount", 0))
+                    cinetpay_payment.payment_method = result["data"].get("payment_method", "")
                     
                     if payment.payable_type == "JobApplication":
                         
@@ -410,9 +430,15 @@ class PaymentService:
                         training_fee_installment_payment.payment_id = payment.id
                         session.commit()
                     
-                elif result["data"]["status"] == "REFUSED":
+                elif transaction_status in ["REFUSED", "CANCELLED"]:
                     payment.status = PaymentStatusEnum.REFUSED.value
                     cinetpay_payment.status = PaymentStatusEnum.REFUSED.value
+                    cinetpay_payment.error_code = result.get("code", "")
+                elif transaction_status in ["WAITING_FOR_CUSTOMER", "WAITING_CUSTOMER_TO_VALIDATE", 
+                                            "WAITING_CUSTOMER_PAYMENT", "WAITING_CUSTOMER_OTP_CODE"]:
+                    # Paiement en attente de confirmation
+                    payment.status = PaymentStatusEnum.PENDING.value
+                    cinetpay_payment.status = PaymentStatusEnum.PENDING.value
                 
                 session.commit()
 
@@ -420,8 +446,31 @@ class PaymentService:
     
 
 class CinetPayService:
+    # Codes d'erreur selon la documentation CinetPay
+    ERROR_CODES = {
+        "00": "SUCCES",
+        "201": "CREATED",
+        "600": "PAYMENT_FAILED",
+        "602": "INSUFFICIENT_BALANCE",
+        "604": "OTP_CODE_ERROR",
+        "608": "MINIMUM_REQUIRED_FIELDS",
+        "606": "INCORRECT_SETTINGS",
+        "609": "AUTH_NOT_FOUND",
+        "623": "WAITING_CUSTOMER_TO_VALIDATE",
+        "624": "PROCESSING_ERROR",
+        "625": "ABONNEMENT_OR_TRANSACTIONS_EXPIRED",
+        "627": "TRANSACTION_CANCEL",
+        "662": "WAITING_CUSTOMER_PAYMENT",
+        "663": "WAITING_CUSTOMER_OTP_CODE"
+    }
+    
     def __init__(self, session: AsyncSession = Depends(get_session_async)) -> None:
         self.session = session
+    
+    @staticmethod
+    def get_error_message(error_code: str) -> str:
+        """Retourne le message d'erreur selon le code CinetPay"""
+        return CinetPayService.ERROR_CODES.get(error_code, "UNKNOWN_ERROR")
 
 
     async def initiate_cinetpay_payment(self, payment_data: CinetPayInit):
@@ -436,9 +485,9 @@ class CinetPayService:
         print(f"Payment Currency: {payment_data.currency}")
         print(f"Transaction ID: {payment_data.transaction_id}")
         
-        # Vérification des paramètres requis
-        if not settings.CINETPAY_API_KEY or settings.CINETPAY_API_KEY == "your_cinetpay_api_key_here":
-            error_msg = "CinetPay API Key is not configured or is invalid"
+        # Vérification des paramètres requis (chargés depuis .env)
+        if not settings.CINETPAY_API_KEY or settings.CINETPAY_API_KEY.strip() == "":
+            error_msg = "CinetPay API Key is not configured. Please set CINETPAY_API_KEY in your .env file"
             print(f"ERROR: {error_msg}")
             return {
                 "status": "error",
@@ -446,8 +495,8 @@ class CinetPayService:
                 "message": error_msg
             }
         
-        if not settings.CINETPAY_SITE_ID or settings.CINETPAY_SITE_ID == "your_cinetpay_site_id_here":
-            error_msg = "CinetPay Site ID is not configured or is invalid"
+        if not settings.CINETPAY_SITE_ID or settings.CINETPAY_SITE_ID.strip() == "":
+            error_msg = "CinetPay Site ID is not configured. Please set CINETPAY_SITE_ID in your .env file"
             print(f"ERROR: {error_msg}")
             return {
                 "status": "error",
@@ -465,10 +514,39 @@ class CinetPayService:
             }
         
         # Validation des montants selon la documentation CinetPay
-        # Augmenter le montant minimum pour forcer l'option carte bancaire
-        min_amount_for_card = max(settings.CINETPAY_CARD_MIN_AMOUNT, 1000)  # Minimum 1000 XAF pour carte
-        if payment_data.amount < min_amount_for_card:
-            error_msg = f"Montant minimum requis: {min_amount_for_card} {payment_data.currency}"
+        # Le montant doit être un multiple de 5 (sauf pour USD)
+        original_amount = payment_data.amount
+        if payment_data.currency != "USD":
+            if payment_data.amount % 5 != 0:
+                # Arrondir au multiple de 5 supérieur
+                payment_data.amount = PaymentService.round_up_to_nearest_5(payment_data.amount)
+                print(f"Amount rounded from {original_amount} to nearest multiple of 5: {payment_data.amount}")
+        
+        # S'assurer que le montant est un entier (comme dans les tests qui fonctionnent)
+        payment_data.amount = int(payment_data.amount)
+        
+        # Validation des montants minimum et maximum selon la devise
+        min_amounts = {
+            "XOF": 100,  # Côte d'Ivoire, Sénégal, Togo, Bénin, Mali, Burkina Faso
+            "XAF": 100,  # Cameroun
+            "CDF": 100,  # RD Congo
+            "GNF": 1000,  # Guinée
+            "USD": 1  # USD (pas de restriction de multiple de 5)
+        }
+        
+        max_amounts = {
+            "XOF": 2000000,  # Maximum selon la documentation
+            "XAF": 1500000,  # Cameroun
+            "CDF": 2000000,  # RD Congo
+            "GNF": 15000000,  # Guinée
+            "USD": 3000  # RD Congo USD
+        }
+        
+        min_amount = min_amounts.get(payment_data.currency, 100)
+        max_amount = max_amounts.get(payment_data.currency, 2000000)
+        
+        if payment_data.amount < min_amount:
+            error_msg = f"Montant minimum requis: {min_amount} {payment_data.currency}"
             print(f"ERROR: {error_msg}")
             return {
                 "status": "error",
@@ -476,8 +554,8 @@ class CinetPayService:
                 "message": error_msg
             }
         
-        if payment_data.amount > settings.CINETPAY_CARD_MAX_AMOUNT:
-            error_msg = f"Montant maximum autorisé: {settings.CINETPAY_CARD_MAX_AMOUNT} {payment_data.currency}"
+        if payment_data.amount > max_amount:
+            error_msg = f"Montant maximum autorisé: {max_amount} {payment_data.currency}"
             print(f"ERROR: {error_msg}")
             return {
                 "status": "error",
@@ -486,8 +564,15 @@ class CinetPayService:
             }
 
         # Utiliser les canaux de paiement configurés selon la documentation CinetPay
-        # "ALL" est le seul channel qui fonctionne correctement pour Visa/Mastercard
-        channels_param = "ALL"  # Seul channel qui fonctionne avec toutes les options
+        # Options: "ALL", "MOBILE_MONEY", "CREDIT_CARD", "WALLET"
+        if payment_data.channels:
+            channels_param = payment_data.channels.upper()
+            # Valider que le channel est valide
+            valid_channels = ["ALL", "MOBILE_MONEY", "CREDIT_CARD", "WALLET"]
+            if channels_param not in valid_channels:
+                channels_param = "ALL"
+        else:
+            channels_param = settings.CINETPAY_CHANNELS if settings.CINETPAY_CHANNELS else "ALL"
         
         print(f"CinetPay Channels: {channels_param}")
         print(f"CinetPay Card Payments Enabled: {settings.CINETPAY_ENABLE_CARD_PAYMENTS}")
@@ -505,6 +590,7 @@ class CinetPayService:
         has_special_chars = bool(re.search(pattern, cleaned_description))
         print(f"Contains special chars: {has_special_chars}")
         
+        # Construire le payload selon la documentation CinetPay (identique aux tests qui fonctionnent)
         payload = {
             "amount": payment_data.amount,
             "currency": payment_data.currency,
@@ -515,14 +601,18 @@ class CinetPayService:
             "channels": channels_param,
             "return_url": settings.CINETPAY_RETURN_URL,
             "notify_url": settings.CINETPAY_NOTIFY_URL,
-            "meta": clean_cinetpay_string(payment_data.meta, max_length=200),
+            "metadata": clean_cinetpay_string(payment_data.meta or "", max_length=200) if payment_data.meta else "",
             "invoice_data": {
                 "Service": clean_cinetpay_string("LAFAOM-MAO", max_length=50),
                 "Montant": f"{payment_data.amount} {payment_data.currency}",
                 "Reference": payment_data.transaction_id[:20]  # Limiter à 20 caractères
             },
-            "lang": "fr",  # Langue française pour le guichet de paiement
+            "lang": payment_data.lang or "fr",  # Langue du guichet de paiement (fr, en)
         }
+        
+        # Ajouter lock_phone_number si activé (selon la documentation)
+        if payment_data.lock_phone_number:
+            payload["lock_phone_number"] = True
         
         # Informations client OBLIGATOIRES pour activer l'option carte bancaire.
         # Selon la documentation CinetPay, toutes ces informations sont requises
@@ -532,35 +622,73 @@ class CinetPayService:
         payload["customer_email"] = (payment_data.customer_email or "client@lafaom.com").strip()  # Email ne doit pas être nettoyé de la même manière
         
         # Formater le numéro de téléphone selon la documentation CinetPay
+        # Support pour lock_phone_number selon la documentation
+        lock_phone_number = False
         if payment_data.customer_phone_number:
             phone = payment_data.customer_phone_number.strip()
+            # Si le numéro commence par +, on le garde tel quel
             if not phone.startswith("+"):
-                if phone.startswith("221"):
+                # Déterminer le préfixe selon le pays
+                country_prefix = "237"  # Cameroun par défaut (XAF)
+                if payment_data.currency == "XOF":
+                    country_prefix = "221"  # Sénégal par défaut
+                elif payment_data.customer_country:
+                    # Mapper les codes pays aux préfixes
+                    country_prefixes = {
+                        "SN": "221", "CI": "225", "TG": "228", "BJ": "229",
+                        "ML": "223", "BF": "226", "CM": "237", "CD": "243", "GN": "224"
+                    }
+                    country_prefix = country_prefixes.get(payment_data.customer_country.upper(), "237")
+                
+                if phone.startswith(country_prefix):
                     phone = "+" + phone
                 elif phone.startswith("0"):
-                    phone = "+221" + phone[1:]
+                    phone = "+" + country_prefix + phone[1:]
                 else:
-                    phone = "+221" + phone
+                    phone = "+" + country_prefix + phone
+            
             payload["customer_phone_number"] = phone
+            # Activer lock_phone_number si le numéro est fourni
+            # lock_phone_number permet de préfixer le numéro sur le guichet
+            # payload["lock_phone_number"] = lock_phone_number  # Optionnel selon besoin
         else:
-            payload["customer_phone_number"] = "+221123456789"  # Numéro par défaut Sénégal
+            # Numéro par défaut selon le pays
+            default_prefix = "237" if payment_data.currency == "XAF" else "221"
+            payload["customer_phone_number"] = f"+{default_prefix}123456789"
         
         # S'assurer que tous les champs obligatoires sont remplis
         payload["customer_address"] = clean_cinetpay_string(payment_data.customer_address or "Dakar Senegal", max_length=200)
         payload["customer_city"] = clean_cinetpay_string(payment_data.customer_city or "Dakar", max_length=100)
         
-        # Code pays - forcer SN (Sénégal) si non fourni
+        # Code pays - déterminer selon la devise ou le pays fourni
         if payment_data.customer_country:
             country_code = payment_data.customer_country.upper().strip()
-            if country_code in ["SN", "SENEGAL"]:
-                payload["customer_country"] = "SN"
-            else:
-                payload["customer_country"] = "SN"  # Forcer le Sénégal pour la cohérence
+            # Mapper les noms de pays aux codes ISO
+            country_mapping = {
+                "SENEGAL": "SN", "SN": "SN",
+                "COTE D'IVOIRE": "CI", "IVOIRE": "CI", "CI": "CI",
+                "TOGO": "TG", "TG": "TG",
+                "BENIN": "BJ", "BJ": "BJ",
+                "MALI": "ML", "ML": "ML",
+                "BURKINA FASO": "BF", "BF": "BF",
+                "CAMEROUN": "CM", "CM": "CM",
+                "CONGO": "CD", "RDC": "CD", "CD": "CD",
+                "GUINEE": "GN", "GN": "GN"
+            }
+            payload["customer_country"] = country_mapping.get(country_code, "CM")  # Cameroun par défaut
         else:
-            payload["customer_country"] = "SN"
+            # Déterminer le pays selon la devise
+            currency_to_country = {
+                "XOF": "SN",  # Sénégal par défaut pour XOF
+                "XAF": "CM",  # Cameroun pour XAF
+                "CDF": "CD",  # RD Congo pour CDF
+                "GNF": "GN",  # Guinée pour GNF
+                "USD": "CD"   # RD Congo USD
+            }
+            payload["customer_country"] = currency_to_country.get(payment_data.currency, "CM")
             
-        # State - utiliser le code pays
-        payload["customer_state"] = "SN"
+        # State - utiliser le code pays (selon la documentation, c'est le code ISO du pays)
+        payload["customer_state"] = payload["customer_country"]
             
         # Code postal - valeur par défaut si non fourni
         if payment_data.customer_zip_code:
@@ -592,21 +720,21 @@ class CinetPayService:
                     payload[field] = "065100"
         
         async with httpx.AsyncClient(timeout=30.0) as client:
-            print(f"=== CINETPAY API REQUEST ===")
-            print(f"URL: https://api-checkout.cinetpay.com/v2/payment")
-            print(f"Transaction ID (cleaned): {payment_data.transaction_id}")
-            print(f"Transaction ID length: {len(payment_data.transaction_id)}")
-            transaction_id_pattern = r'[#/$_&]'
-            transaction_id_has_special = bool(re.search(transaction_id_pattern, payment_data.transaction_id))
-            print(f"Transaction ID contains special chars: {transaction_id_has_special}")
-            print(f"Payload: {json.dumps(payload, indent=2, ensure_ascii=False)}")
-            
-            # Headers pour éviter les problèmes CORS
+            # Headers selon les tests qui fonctionnent
             headers = {
                 "Content-Type": "application/json",
                 "Accept": "application/json",
                 "User-Agent": "LAFAOM-Backend/1.0"
             }
+            
+            # Logs détaillés pour debug (identique aux tests)
+            print(f"=== CINETPAY API REQUEST ===")
+            print(f"URL: https://api-checkout.cinetpay.com/v2/payment")
+            print(f"Transaction ID: {payment_data.transaction_id}")
+            print(f"Transaction ID length: {len(payment_data.transaction_id)}")
+            print(f"Amount: {payload['amount']} {payload['currency']}")
+            print(f"Channels: {payload['channels']}")
+            print(f"Description: {payload['description'][:50]}...")
             
             try:
                 response = await client.post(
@@ -638,53 +766,52 @@ class CinetPayService:
             
             print(f"=== CINETPAY API RESPONSE ===")
             print(f"Status Code: {response.status_code}")
-            print(f"Headers: {dict(response.headers)}")
             
             try:
                 response_data = response.json()
-                print(f"Response Body: {json.dumps(response_data, indent=2)}")
-            except Exception as json_error:
-                print(f"Failed to parse JSON response: {json_error}")
-                print(f"Raw response text: {response.text}")
+                response_code = response_data.get("code", "")
+                response_message = response_data.get("message", "")
+                print(f"Code CinetPay: {response_code}")
+                print(f"Message: {response_message}")
+            except json.JSONDecodeError as json_error:
+                print(f"❌ Failed to parse JSON response: {json_error}")
+                print(f"Raw response text: {response.text[:500]}")
                 return {
                     "status": "error",
                     "code": "INVALID_JSON_RESPONSE",
-                    "message": f"Invalid JSON response from CinetPay: {response.text}"
-                }
-            
-            if response.status_code == 400:
-                error_message = f"CinetPay Error: {response_data.get('message', 'Unknown error')} - {response_data.get('description', 'No description')}"
-                print(f"CinetPay Error Details: {error_message}")
-                return {
-                    "status": "error",
-                    "code": response_data.get("code", "UNKNOWN_ERROR"),
-                    "message": error_message
+                    "message": f"Invalid JSON response from CinetPay: {response.text[:500]}"
                 }
             
             if response.status_code != 200:
                 error_message = f"HTTP Error {response.status_code}: {response_data.get('message', 'Unknown error')}"
-                print(f"HTTP Error: {error_message}")
+                error_description = response_data.get('description', '')
+                if error_description:
+                    error_message += f" - {error_description}"
+                print(f"❌ HTTP Error: {error_message}")
                 return {
                     "status": "error",
-                    "code": f"HTTP_{response.status_code}",
+                    "code": response_data.get("code", f"HTTP_{response.status_code}"),
                     "message": error_message
                 }
             
-            if response_data.get("code") == "201":
-                payment_link = response_data["data"]["payment_url"]
+            # Gérer les différents codes de réponse selon la documentation CinetPay
+            response_code = response_data.get("code")
+            
+            if response_code == "201":  # Transaction créée avec succès
+                payment_url = response_data["data"]["payment_url"]
+                payment_token = response_data["data"].get("payment_token", "")
+                api_response_id = response_data.get("api_response_id", "")
                 
+                # Créer l'enregistrement CinetPayPayment (identique aux tests qui fonctionnent)
                 db_payment = CinetPayPayment(
-                    
                     transaction_id=payment_data.transaction_id,
                     amount=payment_data.amount,
                     currency=payment_data.currency,
                     status="PENDING",
-                    payment_link=payment_link,
-                    payment_url=response_data["data"]["payment_url"],
-                    payment_token=response_data["data"]["payment_token"],
-                    api_response_id=response_data["api_response_id"]
+                    payment_url=payment_url,
+                    payment_token=payment_token,
+                    api_response_id=api_response_id
                 )
-
 
                 self.session.add(db_payment)
                 await self.session.commit()
@@ -694,8 +821,30 @@ class CinetPayService:
                     "data": db_payment
                 }
             else:
-                print(response_data["message"])
-                raise Exception(response_data["message"])
+                # Gérer les erreurs selon les codes de la documentation
+                error_code = str(response_data.get("code", "UNKNOWN_ERROR"))
+                error_message = response_data.get("message", "Unknown error")
+                error_description = response_data.get("description", "")
+                
+                # Obtenir le message d'erreur standardisé
+                standard_message = CinetPayService.get_error_message(error_code)
+                
+                print(f"CinetPay Error - Code: {error_code}, Message: {error_message}, Description: {error_description}")
+                print(f"Standard Error Message: {standard_message}")
+                
+                # Construire le message d'erreur détaillé
+                detailed_message = error_message
+                if error_description:
+                    detailed_message = f"{error_message}: {error_description}"
+                elif standard_message != "UNKNOWN_ERROR":
+                    detailed_message = f"{standard_message}: {error_message}"
+                
+                return {
+                    "status": "error",
+                    "code": error_code,
+                    "message": detailed_message,
+                    "standard_message": standard_message
+                }
 
     async def initiate_cinetpay_swallow_payment(self, payment_data: CinetPayInit):
         db_payment = CinetPayPayment(
@@ -713,33 +862,61 @@ class CinetPayService:
 
     @staticmethod
     async def check_cinetpay_payment_status(transaction_id: str):
+        """
+        Vérifie le statut d'une transaction CinetPay
+        
+        Retourne:
+        - code "00": SUCCES
+        - code "627": TRANSACTION_CANCEL
+        - Autres codes d'erreur selon la documentation
+        """
         payload = {
             "apikey": settings.CINETPAY_API_KEY,
             "site_id": settings.CINETPAY_SITE_ID,
             "transaction_id": transaction_id
         }
-        async with httpx.AsyncClient() as client:
-            response = await client.post("https://api-checkout.cinetpay.com/v2/payment/check", json=payload)
-            response.raise_for_status()
-            return response.json()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.post(
+                    "https://api-checkout.cinetpay.com/v2/payment/check", 
+                    json=payload,
+                    headers={"Content-Type": "application/json", "User-Agent": "LAFAOM-Backend/1.0"}
+                )
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPError as e:
+                print(f"Error checking CinetPay payment status: {e}")
+                raise
         
     
     @staticmethod
     def check_cinetpay_payment_status_sync(transaction_id: str):
+        """
+        Vérifie le statut d'une transaction CinetPay (version synchrone)
+        
+        Retourne:
+        - code "00": SUCCES
+        - code "627": TRANSACTION_CANCEL
+        - Autres codes d'erreur selon la documentation
+        """
         payload = {
             "apikey": settings.CINETPAY_API_KEY,
             "site_id": settings.CINETPAY_SITE_ID,
             "transaction_id": transaction_id
         }
         # Using synchronous HTTP client
-        with httpx.Client() as client:
-            response = client.post(
-                "https://api-checkout.cinetpay.com/v2/payment/check",
-                json=payload,
-                timeout=30  # optional, set a timeout
-            )
-            response.raise_for_status()
-            return response.json()
+        with httpx.Client(timeout=30.0) as client:
+            try:
+                response = client.post(
+                    "https://api-checkout.cinetpay.com/v2/payment/check",
+                    json=payload,
+                    headers={"Content-Type": "application/json", "User-Agent": "LAFAOM-Backend/1.0"}
+                )
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPError as e:
+                print(f"Error checking CinetPay payment status (sync): {e}")
+                raise
 
     async def get_cinetpay_payment(self, transaction_id: str):
         statement = select(CinetPayPayment).where(CinetPayPayment.transaction_id == transaction_id)

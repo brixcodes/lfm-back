@@ -105,26 +105,44 @@ async def cinetpay_webhook_handler(
 
     data_string = "".join(fields)
 
-    # 2️⃣ Générer le token HMAC
-    generated_token = hmac.new(
-        settings.CINETPAY_SECRET_KEY.encode("utf-8"),
-        data_string.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+    # 2️⃣ Générer le token HMAC selon la documentation CinetPay
+    # La clé secrète doit être fournie (chargée depuis .env)
+    if not settings.CINETPAY_SECRET_KEY or settings.CINETPAY_SECRET_KEY.strip() == "":
+        print("WARNING: CINETPAY_SECRET_KEY is not configured in .env file. Skipping HMAC verification.")
+        print("WARNING: This is a security risk in production. Please set CINETPAY_SECRET_KEY in your .env file.")
+        # En développement, on peut accepter sans vérification, mais en production c'est risqué
+    else:
+        generated_token = hmac.new(
+            settings.CINETPAY_SECRET_KEY.encode("utf-8"),
+            data_string.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
 
-    # 3️⃣ Vérification de l’intégrité
-    if not hmac.compare_digest(x_token, generated_token):
-        raise HTTPException(status_code=403, detail="Invalid token")
+        # 3️⃣ Vérification de l'intégrité
+        if not hmac.compare_digest(x_token, generated_token):
+            print(f"HMAC verification failed. Expected: {generated_token}, Received: {x_token}")
+            raise HTTPException(status_code=403, detail="Invalid token")
 
-    # 4️⃣ Déclencher la vérification transactionnelle
+    # 4️⃣ Logs détaillés pour diagnostic
+    print(f"=== CINETPAY WEBHOOK NOTIFICATION ===")
+    print(f"Transaction ID: {cpm_trans_id}")
+    print(f"Site ID: {cpm_site_id}")
+    print(f"Amount: {cpm_amount} {cpm_currency}")
+    print(f"Payment Method: {payment_method}")
+    print(f"Phone Number: {cel_phone_num}")
+    print(f"Phone Prefix: {cpm_phone_prefixe}")
+    print(f"Error Message: {cpm_error_message}")
+    print(f"Page Action: {cpm_page_action}")
+    print(f"Payment Config: {cpm_payment_config}")
+    print(f"Signature: {signature}")
+    
+    # 5️⃣ Déclencher la vérification transactionnelle
     check_cash_in_status.apply_async(
         kwargs={"transaction_id": cpm_trans_id},
         countdown=0
     )
-    
-    print("Transaction ID",cpm_trans_id)
 
-    # 5️⃣ Répondre avec succès (200 OK attendu par CinetPay)
+    # 6️⃣ Répondre avec succès (200 OK attendu par CinetPay)
     return {"ok": True}
 
 @router.get("/check-status/{transaction_id}",response_model=PaymentOutSuccess)

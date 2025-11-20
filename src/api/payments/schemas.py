@@ -16,7 +16,7 @@ class CinetPayInit(BaseModel):
     currency: str = "XOF"
     description: str
     invoice_data : dict
-    meta :str
+    meta : Optional[str] = None
     customer_name : Optional[str] = None
     customer_surname :  Optional[str] = None
     customer_email : Optional[str] = None
@@ -26,6 +26,9 @@ class CinetPayInit(BaseModel):
     customer_country : Optional[str] = None
     customer_state : Optional[str] = None
     customer_zip_code : Optional[str] = None
+    channels : Optional[str] = None  # ALL, MOBILE_MONEY, CREDIT_CARD, WALLET
+    lock_phone_number : Optional[bool] = False  # Pour préfixer le numéro sur le guichet
+    lang : Optional[str] = "fr"  # Langue du guichet (fr, en)
 
 class PaymentInitInput(BaseModel):
     payable: Any 
@@ -42,6 +45,9 @@ class PaymentInitInput(BaseModel):
     customer_country : Optional[str] = None
     customer_state : Optional[str] = None
     customer_zip_code : Optional[str] = None
+    channels : Optional[str] = None  # ALL, MOBILE_MONEY, CREDIT_CARD, WALLET
+    lock_phone_number : Optional[bool] = False  # Pour préfixer le numéro sur le guichet
+    lang : Optional[str] = "fr"  # Langue du guichet (fr, en)
 
 class WebhookPayload(BaseModel):
     cpm_site_id: str
