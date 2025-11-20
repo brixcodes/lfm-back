@@ -100,11 +100,12 @@ class Settings(BaseSettings):
     MOODLE_API_TOKEN : str = ""
 
     ## Credential to connect to the CinetPay Server
-    CINETPAY_API_KEY: str = "59010686468150a4a8f1469.76140264"
-    CINETPAY_SITE_ID: str = "105905268"
-    CINETPAY_SECRET_KEY: str | None = None
-    CINETPAY_NOTIFY_URL: str = "https://lafaom.vertex-cam.com/api/v1/payments/cinetpay/notify"
-    CINETPAY_RETURN_URL: str = "https://lafaom.vertex-cam.com"
+    # Les valeurs sont chargées depuis le fichier .env
+    CINETPAY_API_KEY: str = ""
+    CINETPAY_SITE_ID: str = ""
+    CINETPAY_SECRET_KEY: str = ""
+    CINETPAY_NOTIFY_URL: str = "https://api.lafaom-mao.org/api/v1/payments/cinetpay/notify"
+    CINETPAY_RETURN_URL: str = "https://api.lafaom-mao.org/"
     CINETPAY_CURRENCY: str = "XAF"  # XAF pour le compte CinetPay
     
     ## CinetPay Payment Channels Configuration
