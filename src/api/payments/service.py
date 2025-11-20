@@ -374,7 +374,11 @@ class PaymentService:
                     
                     if payment.payable_type == "JobApplication":
                         job_application_service = JobOfferService(session=self.session)
-                        job_offer = await job_application_service.update_job_application_payment(payment_id=int(payment.id),application_id=payment.payable_id)
+                        # payment.id est un UUID (string), payable_id est une string représentant un int
+                        job_offer = await job_application_service.update_job_application_payment(
+                            payment_id=str(payment.id),
+                            application_id=int(payment.payable_id)
+                        )
                     
                     elif payment.payable_type == "StudentApplication":
                         statement = select(StudentApplication).where(StudentApplication.id == payment.payable_id)
