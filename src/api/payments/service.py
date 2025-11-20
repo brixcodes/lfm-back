@@ -239,6 +239,7 @@ class PaymentService:
         final_amount = PaymentService.round_up_to_nearest_5(payment_data.amount * product_currency_to_payment_currency_rate)
         print(f"CinetPay Amount - Final Amount: {final_amount} {payment_currency}")
         
+
         # Générer la description selon le type de payable
         # Retirer les caractères spéciaux et utiliser des descriptions spécifiques
         payable_type = payment_data.payable.__class__.__name__
@@ -682,17 +683,9 @@ class CinetPayService:
             phone = payment_data.customer_phone_number.strip()
             # Si le numéro commence par +, on le garde tel quel
             if not phone.startswith("+"):
-                # Déterminer le préfixe selon le pays
-                country_prefix = "237"  # Cameroun par défaut (XAF)
-                if payment_data.currency == "XOF":
-                    country_prefix = "221"  # Sénégal par défaut
-                elif payment_data.customer_country:
-                    # Mapper les codes pays aux préfixes
-                    country_prefixes = {
-                        "SN": "221", "CI": "225", "TG": "228", "BJ": "229",
-                        "ML": "223", "BF": "226", "CM": "237", "CD": "243", "GN": "224"
-                    }
-                    country_prefix = country_prefixes.get(payment_data.customer_country.upper(), "237")
+                # IMPORTANT: Pour ce compte CinetPay, le pays est toujours "CM" (Cameroun)
+                # Le préfixe téléphonique est donc toujours "237" pour le Cameroun
+                country_prefix = "237"  # Cameroun (toujours pour ce compte)
                 
                 if phone.startswith(country_prefix):
                     phone = "+" + phone
@@ -704,24 +697,10 @@ class CinetPayService:
             payload["customer_phone_number"] = phone
         else:
             # Pour le paiement par carte bancaire, un numéro de téléphone valide est OBLIGATOIRE
-            # Générer un numéro par défaut valide selon le pays
-            # Déterminer le préfixe selon la devise ou le pays
-            if payment_data.currency == "XAF":
-                default_prefix = "237"  # Cameroun
-                default_phone = "657807309"  # Format valide pour le Cameroun
-            elif payment_data.currency == "XOF":
-                default_prefix = "221"  # Sénégal
-                default_phone = "771234567"  # Format valide pour le Sénégal
-            elif payment_data.customer_country:
-                country_prefixes = {
-                    "SN": "221", "CI": "225", "TG": "228", "BJ": "229",
-                    "ML": "223", "BF": "226", "CM": "237", "CD": "243", "GN": "224"
-                }
-                default_prefix = country_prefixes.get(payment_data.customer_country.upper(), "237")
-                default_phone = "657807309"  # Format par défaut
-            else:
-                default_prefix = "237"
-                default_phone = "657807309"
+            # IMPORTANT: Pour ce compte CinetPay, le pays est toujours "CM" (Cameroun)
+            # Le préfixe téléphonique est donc toujours "237" pour le Cameroun
+            default_prefix = "237"  # Cameroun (toujours pour ce compte)
+            default_phone = "657807309"  # Format valide pour le Cameroun
             
             payload["customer_phone_number"] = f"+{default_prefix}{default_phone}"
             print(f"⚠️  Aucun numéro de téléphone fourni, utilisation du numéro par défaut: {payload['customer_phone_number']}")
@@ -738,32 +717,10 @@ class CinetPayService:
         payload["customer_address"] = clean_cinetpay_string(payment_data.customer_address or default_address, max_length=200)
         payload["customer_city"] = clean_cinetpay_string(payment_data.customer_city or default_city, max_length=100)
         
-        # Code pays - déterminer selon la devise ou le pays fourni
-        if payment_data.customer_country:
-            country_code = payment_data.customer_country.upper().strip()
-            # Mapper les noms de pays aux codes ISO
-            country_mapping = {
-                "SENEGAL": "SN", "SN": "SN",
-                "COTE D'IVOIRE": "CI", "IVOIRE": "CI", "CI": "CI",
-                "TOGO": "TG", "TG": "TG",
-                "BENIN": "BJ", "BJ": "BJ",
-                "MALI": "ML", "ML": "ML",
-                "BURKINA FASO": "BF", "BF": "BF",
-                "CAMEROUN": "CM", "CM": "CM",
-                "CONGO": "CD", "RDC": "CD", "CD": "CD",
-                "GUINEE": "GN", "GN": "GN"
-            }
-            payload["customer_country"] = country_mapping.get(country_code, "CM")  # Cameroun par défaut
-        else:
-            # Déterminer le pays selon la devise
-            currency_to_country = {
-                "XOF": "SN",  # Sénégal par défaut pour XOF
-                "XAF": "CM",  # Cameroun pour XAF
-                "CDF": "CD",  # RD Congo pour CDF
-                "GNF": "GN",  # Guinée pour GNF
-                "USD": "CD"   # RD Congo USD
-            }
-            payload["customer_country"] = currency_to_country.get(payment_data.currency, "CM")
+        # Code pays - IMPORTANT: Pour ce compte CinetPay, customer_country doit toujours être "CM"
+        # Selon la documentation CinetPay, le pays doit correspondre au pays du compte marchand
+        # Ce compte est configuré pour le Cameroun, donc customer_country doit être "CM"
+        payload["customer_country"] = "CM"  # Toujours "CM" pour ce compte CinetPay
             
         # State - utiliser le code pays (selon la documentation, c'est le code ISO du pays)
         payload["customer_state"] = payload["customer_country"]
@@ -800,7 +757,7 @@ class CinetPayService:
                 elif field == "customer_state":
                     payload[field] = payload.get("customer_country", "CM")
                 elif field == "customer_country":
-                    payload[field] = "CM" if payment_data.currency == "XAF" else "SN"
+                    payload[field] = "CM"  # Toujours "CM" pour ce compte CinetPay
                 elif field == "customer_zip_code":
                     payload[field] = "065100"
         
