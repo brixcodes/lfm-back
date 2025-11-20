@@ -616,6 +616,7 @@ class CinetPayService:
         
         # Informations client OBLIGATOIRES pour activer l'option carte bancaire.
         # Selon la documentation CinetPay, toutes ces informations sont requises
+        # IMPORTANT: Ces données sont utilisées par CinetPay pour configurer l'authentification de la carte
         # Nettoyer tous les champs pour éviter les caractères spéciaux
         payload["customer_name"] = clean_cinetpay_string(payment_data.customer_name or "Client", max_length=100)
         payload["customer_surname"] = clean_cinetpay_string(payment_data.customer_surname or "LAFAOM", max_length=100)
@@ -673,8 +674,16 @@ class CinetPayService:
             print(f"⚠️  Aucun numéro de téléphone fourni, utilisation du numéro par défaut: {payload['customer_phone_number']}")
         
         # S'assurer que tous les champs obligatoires sont remplis
-        payload["customer_address"] = clean_cinetpay_string(payment_data.customer_address or "Dakar Senegal", max_length=200)
-        payload["customer_city"] = clean_cinetpay_string(payment_data.customer_city or "Dakar", max_length=100)
+        # Adapter les valeurs par défaut selon la devise/pays
+        if payment_data.currency == "XAF":
+            default_address = "Yaoundé"
+            default_city = "Yaoundé"
+        else:
+            default_address = "Dakar"
+            default_city = "Dakar"
+        
+        payload["customer_address"] = clean_cinetpay_string(payment_data.customer_address or default_address, max_length=200)
+        payload["customer_city"] = clean_cinetpay_string(payment_data.customer_city or default_city, max_length=100)
         
         # Code pays - déterminer selon la devise ou le pays fourni
         if payment_data.customer_country:
@@ -713,11 +722,12 @@ class CinetPayService:
             payload["customer_zip_code"] = "065100"
         
         # Vérification finale : s'assurer qu'aucun champ obligatoire n'est vide
+        # IMPORTANT: Pour le paiement par carte bancaire, tous les champs doivent être valides
         required_fields = ["customer_name", "customer_surname", "customer_email", "customer_phone_number", 
-                          "customer_address", "customer_city", "customer_country", "customer_zip_code"]
+                          "customer_address", "customer_city", "customer_country", "customer_state", "customer_zip_code"]
         for field in required_fields:
-            if not payload.get(field) or payload[field].strip() == "":
-                print(f"WARNING: Field {field} is empty, using default value")
+            if not payload.get(field) or (isinstance(payload[field], str) and payload[field].strip() == ""):
+                print(f"⚠️  WARNING: Field {field} is empty, using default value")
                 if field == "customer_name":
                     payload[field] = "Client"
                 elif field == "customer_surname":
@@ -725,15 +735,41 @@ class CinetPayService:
                 elif field == "customer_email":
                     payload[field] = "client@lafaom.com"
                 elif field == "customer_phone_number":
-                    payload[field] = "+221123456789"
+                    # Utiliser le même format que défini précédemment
+                    if payment_data.currency == "XAF":
+                        payload[field] = "+237657807309"
+                    else:
+                        payload[field] = "+221771234567"
                 elif field == "customer_address":
-                    payload[field] = "Dakar Senegal"
+                    payload[field] = "Yaoundé" if payment_data.currency == "XAF" else "Dakar"
                 elif field == "customer_city":
-                    payload[field] = "Dakar"
+                    payload[field] = "Yaoundé" if payment_data.currency == "XAF" else "Dakar"
+                elif field == "customer_state":
+                    payload[field] = payload.get("customer_country", "CM")
                 elif field == "customer_country":
-                    payload[field] = "SN"
+                    payload[field] = "CM" if payment_data.currency == "XAF" else "SN"
                 elif field == "customer_zip_code":
                     payload[field] = "065100"
+        
+        # Logs détaillés pour le diagnostic (surtout pour le paiement par carte bancaire)
+        if channels_param == "CREDIT_CARD":
+            print(f"\n{'='*80}")
+            print(f"📋 PAYLOAD CINETPAY - PAIEMENT CARTE BANCAIRE")
+            print(f"{'='*80}")
+            print(f"Transaction ID: {payment_data.transaction_id}")
+            print(f"Amount: {payload['amount']} {payload['currency']}")
+            print(f"Channels: {channels_param}")
+            print(f"\n👤 INFORMATIONS CLIENT:")
+            print(f"  - Name: {payload['customer_name']}")
+            print(f"  - Surname: {payload['customer_surname']}")
+            print(f"  - Email: {payload['customer_email']}")
+            print(f"  - Phone: {payload['customer_phone_number']}")
+            print(f"  - Address: {payload['customer_address']}")
+            print(f"  - City: {payload['customer_city']}")
+            print(f"  - Country: {payload['customer_country']}")
+            print(f"  - State: {payload['customer_state']}")
+            print(f"  - Zip Code: {payload['customer_zip_code']}")
+            print(f"{'='*80}\n")
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             # Headers selon les tests qui fonctionnent
