@@ -215,6 +215,8 @@ class StudentAttachmentOut(BaseModel):
     file_path: str
     created_at: datetime
     updated_at: datetime
+    
+    model_config = {"from_attributes": True}
 
 class StudentApplicationCreateInput(BaseModel):
     email: EmailStr

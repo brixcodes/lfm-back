@@ -122,7 +122,9 @@ class StudentAttachment(CustomBaseModel, table=True):
     __tablename__ = "student_attachments"
 
     application_id: int = Field(foreign_key="student_applications.id", nullable=False)
-    document_type: str = Field(max_length=100)
+    attachment_type: str = Field(max_length=100)  # Colonne dans la DB
+    document_type: str = Field(max_length=100)  # Colonne dans la DB (aussi!)
+    file_name: str = Field(max_length=255)  # Nom du fichier
     file_path: str = Field(max_length=255)
     upload_date: Optional[datetime] = Field(default=None)
 

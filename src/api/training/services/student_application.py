@@ -148,6 +148,7 @@ class StudentApplicationService:
         self.session.add(application)
         await self.session.commit()
         await self.session.refresh(application)
+        
         return application
     
     async def update_student_application(self, application: StudentApplication, data) -> StudentApplication:
@@ -574,12 +575,31 @@ class StudentApplicationService:
     # Attachments
     async def create_student_attachment(self, user_id: str, application_id: int, input: StudentAttachmentInput) -> StudentAttachment:
         """Create student attachment"""
+        # Récupérer la candidature pour connaître la méthode de paiement
+        app_stmt = select(StudentApplication).where(StudentApplication.id == application_id)
+        app_res = await self.session.execute(app_stmt)
+        application = app_res.scalars().first()
+        
+        if application is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=BaseOutFail(
+                    message=ErrorMessage.STUDENT_APPLICATION_NOT_FOUND.description,
+                    error_code=ErrorMessage.STUDENT_APPLICATION_NOT_FOUND.value
+                ).model_dump()
+            )
+        
+        # Déterminer le document_type selon la méthode de paiement
+        # Si payment_method est TRANSFER, le document_type sera le nom fourni (ex: BANK_TRANSFER_RECEIPT, CV, etc.)
+        # Si payment_method est ONLINE, le document_type sera le nom fourni (ex: CV, DIPLOMA, etc.)
+        document_type = input.name
+        
         # Replace existing attachment of same type
         existing_stmt = (
             select(StudentAttachment)
             .join(StudentApplication, StudentApplication.id == StudentAttachment.application_id)
             .where(StudentApplication.user_id == user_id)
-            .where(StudentAttachment.document_type == input.name, StudentAttachment.application_id == application_id))
+            .where(StudentAttachment.attachment_type == document_type, StudentAttachment.application_id == application_id))
         existing_res = await self.session.execute(existing_stmt)
         existing = existing_res.scalars().first()
         if existing is not None:
@@ -588,7 +608,17 @@ class StudentApplicationService:
             await self.session.commit()
 
         url, _, _ = await FileHelper.upload_file(input.file, f"/student-applications/{application_id}", input.name)
-        attachment = StudentAttachment(application_id=application_id, file_path=url, document_type=input.name)
+        
+        # Extraire le nom du fichier
+        file_name = input.file.filename if hasattr(input.file, 'filename') else input.name
+        
+        attachment = StudentAttachment(
+            application_id=application_id, 
+            file_path=url, 
+            attachment_type=document_type,  # Remplir attachment_type
+            document_type=document_type,  # Remplir document_type aussi
+            file_name=file_name
+        )
         self.session.add(attachment)
         await self.session.commit()
         await self.session.refresh(attachment)
