@@ -1,5 +1,5 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from src.api.auth.utils import check_permissions, get_current_active_user
 from src.api.job_offers.models import ApplicationStatusEnum
 from src.api.payments.schemas import InitPaymentOutSuccess
@@ -108,6 +108,26 @@ async def list_student_attachments(
     return {"message": "Attachments fetched successfully", "data": attachments}
 
 
+@router.delete("/student-applications/{application_id}", response_model=StudentApplicationOutSuccess, tags=["Student Application"])
+async def delete_student_application_admin(
+    application_id: int,
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_STUDENT_APPLICATION]))],
+    student_app_service: StudentApplicationService = Depends(),
+):
+    """Delete a student application by ID (Admin only)"""
+    application = await student_app_service.get_student_application_by_id(application_id)
+    if application is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=BaseOutFail(
+                message=ErrorMessage.STUDENT_APPLICATION_NOT_FOUND.description,
+                error_code=ErrorMessage.STUDENT_APPLICATION_NOT_FOUND.value,
+            ).model_dump(),
+        )
+    
+    deleted_application = await student_app_service.delete_student_application(application)
+    return {"message": "Student application deleted successfully", "data": deleted_application}
+
 #eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3YjczZjQ0Mi01NzVhLTQzNzgtODQ3Ny00MTUxMmU1ZjI5Y2MiLCJleHAiOjE3NTg1MTgzMjB9.S99P8yGi6fmN9LTONAm266a2GKW3uvEh54FVitbY6-k
 
 #My  Student Applications
@@ -144,29 +164,33 @@ async def create_student_application(
         user_id=application.user_id
     )
 
-    # 3️⃣ Cas TRANSFER → reçu bancaire obligatoire
+    # 3️⃣ Cas TRANSFER → Pas de paiement en ligne, juste retourner la candidature
+    # L'utilisateur devra uploader le reçu bancaire via l'endpoint d'attachments
     if getattr(input, "payment_method", None) == "TRANSFER":
-        submitted_types = [att.type for att in (input.attachments or [])]
-        if "BANK_TRANSFER_RECEIPT" not in submitted_types:
-            await student_app_service.delete_student_application(application)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=BaseOutFail(
-                    message="Bank transfer receipt is required",
-                    error_code="STUDENT_ATTACHMENT_REQUIRED"
-                ).model_dump(),
-            )
-
         # Envoi mail de confirmation (optionnel) - TODO: Implémenter cette méthode
         # await student_app_service.send_application_confirmation_email(application)
 
         data_model = StudentApplicationFullOut.model_validate(application, from_attributes=True)
+        # Convertir les attachements si présents
+        if application.attachments:
+            from src.api.training.schemas import StudentAttachmentOut
+            data_model.attachments = [
+                StudentAttachmentOut(
+                    id=att.id,
+                    application_id=att.application_id,
+                    document_type=att.document_type,
+                    file_path=att.file_path,
+                    created_at=att.created_at,
+                    updated_at=att.updated_at
+                )
+                for att in application.attachments
+            ]
         data = data_model.model_dump()
         data["payment"] = None
 
         return {
             "success": True,
-            "message": "Student application created successfully",
+            "message": "Student application created successfully. Please upload the bank transfer receipt.",
             "data": data
         }
 
@@ -344,7 +368,8 @@ async def list_student_attachments(
 @router.post("/my-student-applications/{application_id}/attachments", response_model=StudentAttachmentOutSuccess, tags=["My Student Application"])
 async def create_student_attachment(
     application_id: int,
-    input : Annotated[StudentAttachmentInput,Form(...)],
+    name: Annotated[str, Form(...)],
+    file: Annotated[UploadFile, File(...)],
     student_app_service: StudentApplicationService = Depends(),
 ):
     application = await student_app_service.get_student_application_by_id(application_id)
@@ -356,7 +381,16 @@ async def create_student_attachment(
                 error_code=ErrorMessage.STUDENT_APPLICATION_NOT_FOUND.value,
             ).model_dump(),
         )
-    attachment = await student_app_service.create_student_attachment(user_id= application.user_id, application_id=application_id, input = input)
+    
+    # Créer un objet input pour le service
+    from src.api.training.schemas import StudentAttachmentInput
+    input_data = StudentAttachmentInput(name=name, file=file)
+    
+    attachment = await student_app_service.create_student_attachment(
+        user_id=application.user_id, 
+        application_id=application_id, 
+        input=input_data
+    )
     return {"message": "Attachment created successfully", "data": attachment}
 
 @router.delete("/my-student-attachments/{attachment_id}", response_model=StudentAttachmentOutSuccess, tags=["My Student Application"])
