@@ -49,7 +49,7 @@ class Settings(BaseSettings):
         return [str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS] 
     
     ## Notification System
-    EMAIL_CHANNEL : Literal["smtp","mailgun", "brevo"] = "smtp"
+    EMAIL_CHANNEL : str = "smtp"
     
     
     ## Email Parameters
