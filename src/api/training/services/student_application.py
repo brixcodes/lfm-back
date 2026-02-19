@@ -499,7 +499,8 @@ class StudentApplicationService:
     
     async def delete_student_application(self, application: StudentApplication) -> StudentApplication:
         """Delete student application"""
-        await self.dissociate_student_attachment(application_id=application.id)
+        # Note: attachments are automatically handled by the 'delete-orphan' cascade
+        # defined in the StudentApplication model relationship.
         await self.session.delete(application)
         await self.session.commit()
         return application

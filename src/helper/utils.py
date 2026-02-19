@@ -199,9 +199,11 @@ class NotificationHelper :
     
                 
         except smtplib.SMTPAuthenticationError as e:
-            print(f"Authentication error: {e}")
+            print(f"Authentication error with {settings.SMTP_HOST}:{settings.SMTP_PORT} ({settings.SMTP_ENCRYPTION}): {e}")
+            if "5.7.9" in str(e):
+                print("HINT: This error (5.7.9) usually means an App Password is required, or Gmail is blocking the connection. Visit https://accounts.google.com/DisplayUnlockCaptcha while logged in as " + settings.SMTP_USER)
         except Exception as e:
-            print(f"An error occurred: {e}")    
+            print(f"An error occurred while sending email via {settings.SMTP_HOST}:{settings.SMTP_PORT}: {e}")    
 
 
     @staticmethod  

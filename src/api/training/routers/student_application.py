@@ -115,8 +115,11 @@ async def delete_student_application_admin(
     student_app_service: StudentApplicationService = Depends(),
 ):
     """Delete a student application by ID (Admin only)"""
-    application = await student_app_service.get_student_application_by_id(application_id)
-    if application is None:
+    # Utiliser get_full_student_application_by_id pour charger les relations (training, session, etc.)
+    # afin d'éviter l'erreur 'MissingGreenlet' lors de la sérialisation de la réponse.
+    full_application = await student_app_service.get_full_student_application_by_id(application_id, user_id=None)
+    
+    if full_application is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=BaseOutFail(
@@ -125,8 +128,17 @@ async def delete_student_application_admin(
             ).model_dump(),
         )
     
-    deleted_application = await student_app_service.delete_student_application(application)
-    return {"message": "Student application deleted successfully", "data": deleted_application}
+    # Sérialiser manuellement AVANT la suppression car le commit invalide l'objet
+    from src.api.training.schemas import StudentApplicationFullOut, StudentAttachmentOut
+    data = StudentApplicationFullOut.model_validate(full_application, from_attributes=True)
+    if full_application.attachments:
+        data.attachments = [
+            StudentAttachmentOut.model_validate(att, from_attributes=True)
+            for att in full_application.attachments
+        ]
+
+    await student_app_service.delete_student_application(full_application)
+    return {"message": "Student application deleted successfully", "data": data}
 
 #eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3YjczZjQ0Mi01NzVhLTQzNzgtODQ3Ny00MTUxMmU1ZjI5Y2MiLCJleHAiOjE3NTg1MTgzMjB9.S99P8yGi6fmN9LTONAm266a2GKW3uvEh54FVitbY6-k
 
@@ -342,7 +354,7 @@ async def delete_my_student_application(
     current_user: Annotated[User, Depends(get_current_active_user)],
     student_app_service: StudentApplicationService = Depends(),
 ):
-    full_application = await student_app_service.get_full_student_application_by_id(application_id=application_id,user_id = current_user.id)
+    full_application = await student_app_service.get_full_student_application_by_id(application_id=application_id, user_id=current_user.id)
     if full_application is None or full_application.status == ApplicationStatusEnum.APPROVED.value or full_application.status == ApplicationStatusEnum.REFUSED.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -352,9 +364,17 @@ async def delete_my_student_application(
             ).model_dump(),
         )
     
+    # Sérialiser manuellement AVANT la suppression/commit
+    from src.api.training.schemas import StudentApplicationFullOut, StudentAttachmentOut
+    data = StudentApplicationFullOut.model_validate(full_application, from_attributes=True)
+    if full_application.attachments:
+        data.attachments = [
+            StudentAttachmentOut.model_validate(att, from_attributes=True)
+            for att in full_application.attachments
+        ]
+
     await student_app_service.delete_student_application(full_application)
-    
-    return {"message": "Student application fetched successfully", "data": full_application}
+    return {"message": "Student application deleted successfully", "data": data}
 
 @router.get("/my-student-applications/{application_id}/attachments", response_model=StudentAttachmentListOutSuccess, tags=["My Student Application"])
 async def list_student_attachments(
