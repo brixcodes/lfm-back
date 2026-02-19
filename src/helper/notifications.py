@@ -21,8 +21,10 @@ class NotificationBase(BaseModel):
         data = self.email_data()
         if settings.EMAIL_CHANNEL == EMAIL_CHANNEL.SMTP :
             NotificationHelper.send_smtp_email.delay( data)
-        else : 
+        elif settings.EMAIL_CHANNEL == EMAIL_CHANNEL.MAILGUN : 
             NotificationHelper.send_mailgun_email.delay( data)
+        elif settings.EMAIL_CHANNEL == EMAIL_CHANNEL.BREVO :
+            NotificationHelper.send_brevo_email.delay( data)
         return True
             
 

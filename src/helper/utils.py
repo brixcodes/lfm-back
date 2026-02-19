@@ -260,3 +260,56 @@ class NotificationHelper :
 
         except httpx.HTTPError as e:
             print(f"An error occurred while sending the email: {e}")
+
+
+    @staticmethod  
+    @shared_task
+    def send_brevo_email(data: dict):
+        """
+        Send an email using Brevo API.
+
+        Args:
+        data (dict): A dictionary containing:
+            - to_email (str): The email address to send the email to.
+            - subject (str): The email subject.
+            - body (str): The email body (optional).
+            - template_name (str): The name of the template to use for the email body (optional).
+            - context (dict): The context to pass to the template (optional).
+            - lang (str): Language code.
+
+        Returns:
+        None
+        """
+        body = data.get("body", "")
+    
+        if data.get("template_name") :
+            template = env.get_template(data["lang"] + "/"  + data["template_name"])
+            body = template.render(data["context"])
+            
+        url = "https://api.brevo.com/v3/smtp/email"
+
+        payload = {
+            "sender": {"name": settings.EMAILS_FROM_NAME, "email": settings.EMAILS_FROM_EMAIL},
+            "to": [{"email": data["to_email"]}],
+            "subject": data["subject"],
+            "htmlContent": body if data.get("template_name") or body.startswith("<") else None,
+            "textContent": body if not data.get("template_name") and not body.startswith("<") else None,
+        }
+        
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "api-key": settings.BREVO_API_KEY
+        }
+        
+        try:
+            with httpx.Client() as client:
+                response = client.post(url, json=payload, headers=headers)
+            
+                if response.status_code in [200, 201]:
+                    print(f"Email sent successfully to {data['to_email']} with Brevo API")
+                else:
+                    print(f"Failed to send email: {response.status_code} - {response.text} with Brevo API")
+
+        except httpx.HTTPError as e:
+            print(f"An error occurred while sending the email with Brevo: {e}")

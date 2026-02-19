@@ -49,7 +49,7 @@ class Settings(BaseSettings):
         return [str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS] 
     
     ## Notification System
-    EMAIL_CHANNEL : Literal["smtp","mailgun"] = "smtp"
+    EMAIL_CHANNEL : Literal["smtp","mailgun", "brevo"] = "smtp"
     
     
     ## Email Parameters
@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     MAILGUN_DOMAIN : str =""
     MAILGUN_SECRET : str =""
     MAILGUN_ENDPOINT : str ="api.eu.mailgun.net"
+
+
+    ## Credential to connect to the Brevo Server
+    BREVO_API_KEY : str =""
 
 
     
