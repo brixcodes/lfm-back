@@ -90,9 +90,10 @@ class UserService:
         total_count = await self.session.execute(count_query)
         total_count = total_count.scalar_one()
 
-        statement = statement.offset((user_filter.page - 1) * user_filter.page_size).limit(
-            user_filter.page_size
-        )
+        if user_filter.page_size > 0:
+            statement = statement.offset((user_filter.page - 1) * user_filter.page_size).limit(
+                user_filter.page_size
+            )
         result = await self.session.execute(statement)
         users = result.scalars().all()
 
@@ -142,7 +143,8 @@ class UserService:
         notification = SendPasswordNotification(
             email=user_data["email"],
             password=plain_password,  # Use the plain password for email
-            lang="en"  # Default to English, could be made configurable
+            name=f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}",
+            lang=user_data.get("lang", "en")
         )
         
         notification.send_notification()

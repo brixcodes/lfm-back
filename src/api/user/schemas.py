@@ -1,5 +1,5 @@
-from pydantic import BaseModel,Field
-from typing import List,Optional,Literal
+from pydantic import BaseModel, Field, AliasChoices
+from typing import List, Optional, Literal
 from datetime import date, datetime
 from src.api.user.models import CivilityEnum, UserStatusEnum, UserTypeEnum
 from src.helper.schemas import BaseOutPage, BaseOutSuccess
@@ -141,11 +141,11 @@ class UsersPageOutSuccess(BaseOutPage):
     data: List [UserSimpleOut]
 
 class UserFilter(BaseModel):
-    page: int | None = Field(1, ge=1)
-    page_size: int | None = Field(20, ge=20)
-    search : Optional[str] = None
-    user_type :  Optional[UserTypeEnum] = None
-    country_code : Optional[str] = None
+    page: int | None = Field(1, ge=1, validation_alias=AliasChoices("page", "params[page]"))
+    page_size: int | None = Field(20, ge=0, validation_alias=AliasChoices("page_size", "limit", "params[limit]"))
+    search : Optional[str] = Field(None, validation_alias=AliasChoices("search", "params[search]"))
+    user_type :  Optional[UserTypeEnum] = Field(None, validation_alias=AliasChoices("user_type", "params[user_type]"))
+    country_code : Optional[str] = Field(None, validation_alias=AliasChoices("country_code", "params[country_code]"))
     
     order_by:  Literal["created_at", "last_login","first_name","last_name"] = "created_at"
     asc :  Literal["asc", "desc"] = "asc"

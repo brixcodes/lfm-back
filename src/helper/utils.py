@@ -172,11 +172,12 @@ class NotificationHelper :
         message["Subject"] =  data["subject"]
         data["context"]["app_name"] = settings.EMAILS_FROM_NAME
 
-        if data["template_name"] :
+        body = data.get("body", "")
+        if data.get("template_name") :
             template = env.get_template(data["lang"] + "/" + data["template_name"])
             body = template.render(data["context"])
 
-        message.attach(MIMEText(body, "html" if data["template_name"] else "plain"))     
+        message.attach(MIMEText(body, "html" if data.get("template_name") else "plain"))     
             
         try:
             if settings.SMTP_ENCRYPTION == "TLS":
