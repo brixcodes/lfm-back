@@ -90,6 +90,7 @@ class EMAIL_CHANNEL(str, Enum):
 
     SMTP = "smtp"
     MAILGUN = "mailgun"
+    BREVO = "brevo"
 
 class ErrorMessage(Enum):
     def __init__(self, value, description):
