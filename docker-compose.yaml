@@ -4,7 +4,7 @@ x-app-base: &app-base
   env_file:
     - .env
   volumes:
-    - .:/app
+#    - .:/app
   networks:
     - app_network
   depends_on:
