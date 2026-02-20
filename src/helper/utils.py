@@ -4,17 +4,12 @@ import smtplib
 import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.image import MIMEImage
 from datetime import datetime
 from jinja2 import Environment, FileSystemLoader
 from pyfcm import FCMNotification
 from src.config import settings
 import httpx
 from celery import shared_task
-
-# Base directory of the project (works in both local and Docker environments)
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_LOGO_PATH = os.path.join(_BASE_DIR, 'static', 'logo.png')
 
 
 
@@ -188,29 +183,12 @@ class NotificationHelper :
             body = template.render(data["context"])
 
         if is_html:
-            # For HTML emails with inline images, use multipart/related structure
-            message = MIMEMultipart('related')
+            # HTML email — structure multipart/alternative (logo chargé via URL publique)
+            message = MIMEMultipart('alternative')
             message["From"] = settings.EMAILS_FROM_EMAIL
             message["To"] = data["to_email"]
             message["Subject"] = data["subject"]
-
-            msg_alternative = MIMEMultipart('alternative')
-            message.attach(msg_alternative)
-            msg_alternative.attach(MIMEText(body, 'html'))
-
-            # Attach logo as inline image
-            try:
-                if os.path.exists(_LOGO_PATH):
-                    with open(_LOGO_PATH, "rb") as f:
-                        logo_data = f.read()
-                        image = MIMEImage(logo_data)
-                        image.add_header('Content-ID', '<logo>')
-                        image.add_header('Content-Disposition', 'inline', filename='logo.png')
-                        message.attach(image)
-                else:
-                    print(f"Logo not found at: {_LOGO_PATH}")
-            except Exception as e:
-                print(f"Could not attach logo: {e}")
+            message.attach(MIMEText(body, 'html'))
         else:
             # Plain text email
             message = MIMEMultipart()
@@ -269,6 +247,12 @@ class NotificationHelper :
         """
         # Prepare the body
         body = data.get("body", "")
+
+        if "context" not in data:
+            data["context"] = {}
+        data["context"]["app_name"] = settings.EMAILS_FROM_NAME
+        data["context"]["current_year"] = datetime.now().year
+        data["context"]["logo_url"] = f"{settings.API_BASE_URL}/static/logo.png"
     
         if data.get("template_name") :
             template = env.get_template(data["lang"] + "/"  + data["template_name"])
