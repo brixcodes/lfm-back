@@ -1,6 +1,6 @@
 x-app-base: &app-base
   build: .
-  image: lafaom_base_app
+  image: lafaom_prod_final
   env_file:
     - .env
 #  volumes:
