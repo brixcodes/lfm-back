@@ -46,9 +46,17 @@
             margin: 0 0 1em
         }
 
-        img {
+        img.content-img {
             margin: 0 0 1rem;
             width: 100%
+        }
+
+        img.logo-img {
+            width: 100px;
+            max-width: 100px;
+            height: auto;
+            display: block;
+            margin: 0 auto 10px;
         }
     </style>
     {% endblock %}
@@ -61,7 +69,8 @@
 
         <div style="margin:0 auto;max-width:600px">
             <div style="background:#d14b6b;padding:0.5rem 0;text-align:center">
-                <img src="{{logo_url}}" alt="Logo" style="width: 100px; height: auto; margin-bottom: 10px;">
+                <img src="{{logo_url}}" alt="{{app_name}}" class="logo-img"
+                    style="width:100px;max-width:100px;height:auto;display:block;margin:0 auto 10px;border:0;">
                 <h1 style="color: white; margin: 8px 0">{{app_name}}</h1>
             </div>
             <div style="background:#fff;font-size:1rem">
