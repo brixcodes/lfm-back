@@ -1,19 +1,33 @@
 {% extends "fr/partials/email_base.html" %}
 {% block title %}Authentification à deux facteurs{% endblock %}
 {% block head %}
-    {{ super() }}
-    <style type="text/css">
-        .important { color: #336699; }
-        .cta { color: #d14b6b; font-weight: bold; }
-        .footer { margin-top: 30px; color: #555555; font-size: 12px; }
-    </style>
+{{ super() }}
+<style type="text/css">
+    .important {
+        color: #d14b6b;
+    }
+
+    .cta {
+        color: #d14b6b;
+        font-weight: bold;
+    }
+
+    .footer {
+        margin-top: 30px;
+        color: #555555;
+        font-size: 12px;
+    }
+</style>
 {% endblock %}
 {% block content %}
-    <h2 style="color: #d14b6b;">Authentification à deux facteurs</h2>
-    <p>Bonjour,</p>
-    <p>Nous avons reçu une demande de connexion à votre compte. Pour compléter le processus de connexion, veuillez utiliser le code ci-dessous :</p>
-    <h3 class="cta">{{code}}</h3>
-    <p>Ce code expirera dans <strong>{{ time }}</strong> minutes, assurez-vous de l'entrer rapidement.</p>
-    <p>Si vous n'avez pas demandé cette connexion, veuillez <a href="mailto:support@afrolancer.com" style="color: #336699; text-decoration: none;">contacter notre équipe de support</a> immédiatement ou ignorer cet e-mail.</p>
-    <p class="footer">Merci,<br>L'équipe {{app_name}}</p>
+<h2 style="color: #d14b6b;">Authentification à deux facteurs</h2>
+<p>Bonjour,</p>
+<p>Nous avons reçu une demande de connexion à votre compte. Pour compléter le processus de connexion, veuillez utiliser
+    le code ci-dessous :</p>
+<h3 class="cta">{{code}}</h3>
+<p>Ce code expirera dans <strong>{{ time }}</strong> minutes, assurez-vous de l'entrer rapidement.</p>
+<p>Si vous n'avez pas demandé cette connexion, veuillez <a href="mailto:support@afrolancer.com"
+        style="color: #d14b6b; text-decoration: none;">contacter notre équipe de support</a> immédiatement ou ignorer
+    cet e-mail.</p>
+<p class="footer">Merci,<br>L'équipe {{app_name}}</p>
 {% endblock %}

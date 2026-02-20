@@ -1,29 +1,31 @@
 {% extends "fr/partials/email_base.html" %}
 {% block title %}Confirmation du changement d'e-mail{% endblock %}
 {% block head %}
-    {{ super() }}
-    <style type="text/css">
-        .important { color: #336699; }
-    </style>
+{{ super() }}
+<style type="text/css">
+    .important {
+        color: #d14b6b;
+    }
+</style>
 {% endblock %}
 {% block content %}
 
 
-    <table style="width:100%">
-        <tbody>
-            <tr>
-                <td>
-                    <div >
-                        <h2 style="color: #d14b6b;">Confirmez votre changement d'e-mail</h2>
-                        <p>Bonjour,</p>
-                        <p>Pour confirmer votre demande de changement d'e-mail, veuillez utiliser le code ci-dessous :</p>
-                        <h3 style="color: #d14b6b;">{{code}}</h3>
-                        <p>Ce code expirera dans {{time}} minutes.</p>
-                        <p>Si vous n'avez pas demandé de changement d'e-mail, veuillez ignorer cet e-mail.</p>
-                        <p style="margin-top: 30px;">Merci,<br>L'équipe {{app_name}}</p>
-                    </div>    
-                </td>
-            </tr>
-        </tbody>
-    </table>
-{% endblock %}    
+<table style="width:100%">
+    <tbody>
+        <tr>
+            <td>
+                <div>
+                    <h2 style="color: #d14b6b;">Confirmez votre changement d'e-mail</h2>
+                    <p>Bonjour,</p>
+                    <p>Pour confirmer votre demande de changement d'e-mail, veuillez utiliser le code ci-dessous :</p>
+                    <h3 style="color: #d14b6b;">{{code}}</h3>
+                    <p>Ce code expirera dans {{time}} minutes.</p>
+                    <p>Si vous n'avez pas demandé de changement d'e-mail, veuillez ignorer cet e-mail.</p>
+                    <p style="margin-top: 30px;">Merci,<br>L'équipe {{app_name}}</p>
+                </div>
+            </td>
+        </tr>
+    </tbody>
+</table>
+{% endblock %}

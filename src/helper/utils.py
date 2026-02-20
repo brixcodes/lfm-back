@@ -4,6 +4,8 @@ import smtplib
 import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+from datetime import datetime
 from jinja2 import Environment, FileSystemLoader
 from pyfcm import FCMNotification
 from src.config import settings
@@ -170,12 +172,27 @@ class NotificationHelper :
         message["From"] = settings.EMAILS_FROM_EMAIL
         message["To"] = data["to_email"]
         message["Subject"] =  data["subject"]
+        if "context" not in data:
+            data["context"] = {}
         data["context"]["app_name"] = settings.EMAILS_FROM_NAME
+        data["context"]["current_year"] = datetime.now().year
 
         body = data.get("body", "")
         if data.get("template_name") :
             template = env.get_template(data["lang"] + "/" + data["template_name"])
             body = template.render(data["context"])
+
+            try:
+                # Attach logo image for CID reference
+                if os.path.exists("src/static/logo.png"):
+                    with open("src/static/logo.png", "rb") as f:
+                        logo_data = f.read()
+                        image = MIMEImage(logo_data)
+                        image.add_header('Content-ID', '<logo>')
+                        image.add_header('Content-Disposition', 'inline', filename='logo.png')
+                        message.attach(image)
+            except Exception as e:
+                print(f"Could not attach logo: {e}")
 
         message.attach(MIMEText(body, "html" if data.get("template_name") else "plain"))     
             
@@ -281,6 +298,10 @@ class NotificationHelper :
         None
         """
         body = data.get("body", "")
+    
+        if "context" not in data:
+            data["context"] = {}
+        data["context"]["current_year"] = datetime.now().year
     
         if data.get("template_name") :
             template = env.get_template(data["lang"] + "/"  + data["template_name"])

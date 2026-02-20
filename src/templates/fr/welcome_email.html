@@ -1,25 +1,28 @@
 {% extends "fr/partials/email_base.html" %}
 {% block title %}Bienvenue{% endblock %}
 {% block head %}
-    {{ super() }}
-    <style type="text/css">
-        .important { color: #336699; }
-    </style>
+{{ super() }}
+<style type="text/css">
+    .important {
+        color: #d14b6b;
+    }
+</style>
 {% endblock %}
 {% block content %}
 
-    <table style="width:100%">
-        <tbody>
-            <tr>
-                <td>
-                    <div >
-                        <h2 style="color: #d14b6b;">Bienvenue sur {{app_name}} !</h2>
-                        <p>Bonjour,</p>
-                        <p>Nous sommes ravis de vous accueillir ! Commencez à explorer notre plateforme et découvrez des opportunités adaptées à vos besoins.</p>
-                        <p>Si vous avez des questions, n'hésitez pas à contacter notre équipe de support.</p>
-                    </div>
-                </td>
-            </tr>
-        </tbody>
-    </table>
-{% endblock %}    
+<table style="width:100%">
+    <tbody>
+        <tr>
+            <td>
+                <div>
+                    <h2 style="color: #d14b6b;">Bienvenue sur {{app_name}} !</h2>
+                    <p>Bonjour,</p>
+                    <p>Nous sommes ravis de vous accueillir ! Commencez à explorer notre plateforme et découvrez des
+                        opportunités adaptées à vos besoins.</p>
+                    <p>Si vous avez des questions, n'hésitez pas à contacter notre équipe de support.</p>
+                </div>
+            </td>
+        </tr>
+    </tbody>
+</table>
+{% endblock %}
