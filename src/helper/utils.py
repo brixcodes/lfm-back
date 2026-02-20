@@ -178,6 +178,7 @@ class NotificationHelper :
             data["context"] = {}
         data["context"]["app_name"] = settings.EMAILS_FROM_NAME
         data["context"]["current_year"] = datetime.now().year
+        data["context"]["logo_url"] = f"{settings.API_BASE_URL}/static/logo.png"
 
         body = data.get("body", "")
         is_html = bool(data.get("template_name"))
@@ -324,6 +325,9 @@ class NotificationHelper :
         if "context" not in data:
             data["context"] = {}
         data["context"]["current_year"] = datetime.now().year
+        data["context"]["logo_url"] = f"{settings.API_BASE_URL}/static/logo.png"
+        if "app_name" not in data["context"]:
+            data["context"]["app_name"] = settings.EMAILS_FROM_NAME
     
         if data.get("template_name") :
             template = env.get_template(data["lang"] + "/"  + data["template_name"])
