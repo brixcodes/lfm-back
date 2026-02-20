@@ -77,7 +77,7 @@ services:
   celery_beat:
     <<: *app-base
     container_name: celery_beat
-    command: /start-celerybeat
+    command: /bin/sh -c "rm -f /app/celerybeat/celerybeat-schedule && /start-celerybeat"
     volumes:
       - celery-beat:/app/celerybeat
     restart: unless-stopped
@@ -100,10 +100,23 @@ services:
     depends_on:
       - postgres
 
+  # Service de nettoyage automatique pour Portainer (évite les erreurs de verrouillage)
+  portainer-init:
+    image: alpine
+    container_name: portainer_init
+    volumes:
+      - portainer_data:/data
+    command: rm -f /data/portainer.db.lock
+    networks:
+      - app_network
+
   # Portainer pour la gestion Docker
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
+    depends_on:
+      portainer-init:
+        condition: service_completed_successfully
     ports:
       - "9000:9000"
       - "9443:9443"
