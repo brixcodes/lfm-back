@@ -1,27 +1,30 @@
 {% extends "fr/partials/email_base.html" %}
 {% block title %}Vérification de l'e-mail{% endblock %}
 {% block head %}
-    {{ super() }}
-    <style type="text/css">
-        .important { color: #336699; }
-    </style>
+{{ super() }}
+<style type="text/css">
+    .important {
+        color: #d14b6b;
+    }
+</style>
 {% endblock %}
 {% block content %}
 
-    <table style="width:100%">
-        <tbody>
-            <tr>
-                <td>
-                    <div >
-                        <h2 style="color: #d14b6b;">Vérifiez votre e-mail</h2>
-                        <p>Bonjour,</p>
-                        <p>Merci de vous être inscrit. Pour vérifier votre adresse e-mail, veuillez utiliser le code ci-dessous :</p>
-                        <h3 style="color: #d14b6b;">{{code}}</h3>
-                        <p>Ce code expirera dans <span id="time-remaining">{{time}}</span> minutes.</p>
-                        <p style="margin-top: 30px;">Merci,<br>L'équipe {{app_name}}</p>
-                    </div>
-                </td>
-            </tr>
-        </tbody>
-    </table>
-{% endblock %}    
+<table style="width:100%">
+    <tbody>
+        <tr>
+            <td>
+                <div>
+                    <h2 style="color: #d14b6b;">Vérifiez votre e-mail</h2>
+                    <p>Bonjour,</p>
+                    <p>Merci de vous être inscrit. Pour vérifier votre adresse e-mail, veuillez utiliser le code
+                        ci-dessous :</p>
+                    <h3 style="color: #d14b6b;">{{code}}</h3>
+                    <p>Ce code expirera dans <span id="time-remaining">{{time}}</span> minutes.</p>
+                    <p style="margin-top: 30px;">Merci,<br>L'équipe {{app_name}}</p>
+                </div>
+            </td>
+        </tr>
+    </tbody>
+</table>
+{% endblock %}
