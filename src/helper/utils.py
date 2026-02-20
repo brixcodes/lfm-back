@@ -12,6 +12,12 @@ from src.config import settings
 import httpx
 from celery import shared_task
 
+# Base directory of the project (works in both local and Docker environments)
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_LOGO_PATH = os.path.join(_BASE_DIR, 'static', 'logo.png')
+
+
+
 
 push_service = FCMNotification(
         service_account_file="src/lafaom.json",
@@ -168,33 +174,49 @@ class NotificationHelper :
         Returns:
         None
         """
-        message = MIMEMultipart()
-        message["From"] = settings.EMAILS_FROM_EMAIL
-        message["To"] = data["to_email"]
-        message["Subject"] =  data["subject"]
         if "context" not in data:
             data["context"] = {}
         data["context"]["app_name"] = settings.EMAILS_FROM_NAME
         data["context"]["current_year"] = datetime.now().year
 
         body = data.get("body", "")
-        if data.get("template_name") :
+        is_html = bool(data.get("template_name"))
+
+        if is_html:
             template = env.get_template(data["lang"] + "/" + data["template_name"])
             body = template.render(data["context"])
 
+        if is_html:
+            # For HTML emails with inline images, use multipart/related structure
+            message = MIMEMultipart('related')
+            message["From"] = settings.EMAILS_FROM_EMAIL
+            message["To"] = data["to_email"]
+            message["Subject"] = data["subject"]
+
+            msg_alternative = MIMEMultipart('alternative')
+            message.attach(msg_alternative)
+            msg_alternative.attach(MIMEText(body, 'html'))
+
+            # Attach logo as inline image
             try:
-                # Attach logo image for CID reference
-                if os.path.exists("src/static/logo.png"):
-                    with open("src/static/logo.png", "rb") as f:
+                if os.path.exists(_LOGO_PATH):
+                    with open(_LOGO_PATH, "rb") as f:
                         logo_data = f.read()
                         image = MIMEImage(logo_data)
                         image.add_header('Content-ID', '<logo>')
                         image.add_header('Content-Disposition', 'inline', filename='logo.png')
                         message.attach(image)
+                else:
+                    print(f"Logo not found at: {_LOGO_PATH}")
             except Exception as e:
                 print(f"Could not attach logo: {e}")
-
-        message.attach(MIMEText(body, "html" if data.get("template_name") else "plain"))     
+        else:
+            # Plain text email
+            message = MIMEMultipart()
+            message["From"] = settings.EMAILS_FROM_EMAIL
+            message["To"] = data["to_email"]
+            message["Subject"] = data["subject"]
+            message.attach(MIMEText(body, 'plain'))     
             
         try:
             if settings.SMTP_ENCRYPTION == "TLS":
