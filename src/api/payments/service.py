@@ -113,7 +113,18 @@ class PaymentService:
     
     async def get_currency_rates(self, from_currency: str, to_currencies: list[str] = None):
         
-        cache_key = f"currency:{from_currency}:{','.join(to_currencies) if to_currencies else 'ALL'}"
+        # Determine unique currencies to request, excluding the source currency
+        requested_currencies = list(set(to_currencies)) if to_currencies else []
+        api_symbols = [s for s in requested_currencies if s != from_currency]
+        
+        # Prepare result with 1.0 for same-currency conversion
+        final_rates = {f"{from_currency}{from_currency}": 1.0}
+        
+        # If no other currencies requested, return early
+        if not api_symbols and to_currencies:
+            return final_rates
+
+        cache_key = f"currency:{from_currency}:{','.join(sorted(requested_currencies)) if requested_currencies else 'ALL'}"
 
         # Check cache
         try:
@@ -132,18 +143,21 @@ class PaymentService:
                 "XAFUSD": 0.0017,
                 "XAFEUR": 0.0015,
             }
-            rate_key = f"{from_currency}{to_currencies[0] if to_currencies else 'XAF'}"
-            return {rate_key: default_rates.get(rate_key, 1.0)}
+            for symbol in requested_currencies:
+                key = f"{from_currency}{symbol}"
+                if key not in final_rates:
+                    final_rates[key] = default_rates.get(key, 1.0)
+            return final_rates
         
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 headers = {
                     "apikey": settings.CURRENCY_API_KEY
                 }
-                symbols = ",".join(to_currencies) if to_currencies else None
+                symbols_str = ",".join(api_symbols) if api_symbols else None
                 params = {"source": from_currency}
-                if symbols:
-                    params["currencies"] = symbols
+                if symbols_str:
+                    params["currencies"] = symbols_str
                 
                 print(f"Currency API Request - URL: {settings.CURRENCY_API_URL}")
                 print(f"Currency API Request - Params: {params}")
@@ -162,26 +176,36 @@ class PaymentService:
                     raise Exception("Invalid currency API response format")
                 
                 rates = data['quotes']
+                # Ensure rates is a dictionary
+                if not isinstance(rates, dict):
+                    print(f"Currency API Error: 'quotes' is not a dictionary: {rates}")
+                    rates = {}
+                
+                # Merge with our base rates
+                final_rates.update(rates)
                 
                 # Cache the rates
                 try:
-                    await set_to_redis(cache_key, json.dumps(rates), ex=14400)
+                    await set_to_redis(cache_key, json.dumps(final_rates), ex=14400)
                 except Exception as e:
                     print(f"Redis cache set error: {e}")
                 
-                return rates
+                return final_rates
                 
         except Exception as e:
             print(f"Currency API Error: {e}")
-            # Fallback to default rates
+            # Fallback to default rates for all requested symbols
             default_rates = {
                 "USDXAF": 600.0,
                 "EURXAF": 650.0,
                 "XAFUSD": 0.0017,
                 "XAFEUR": 0.0015,
             }
-            rate_key = f"{from_currency}{to_currencies[0] if to_currencies else 'XAF'}"
-            return {rate_key: default_rates.get(rate_key, 1.0)}
+            for symbol in requested_currencies:
+                key = f"{from_currency}{symbol}"
+                if key not in final_rates:
+                    final_rates[key] = default_rates.get(key, 1.0)
+            return final_rates
 
     async def initiate_payment(self, payment_data: PaymentInitInput,is_swallow: bool = False):
         
@@ -1235,11 +1259,19 @@ class ElyonPayService:
                 "role": settings.ELYONPAY_ROLE
             }
             try:
+                print(f"ElyonPay auth request to: {settings.ELYONPAY_API_URL}/login")
+                # Do not print password in logs, but print username and role
+                print(f"ElyonPay auth payload: {{'username': '{settings.ELYONPAY_USERNAME}', 'role': '{settings.ELYONPAY_ROLE}'}}")
+                
                 response = await client.post(
                     f"{settings.ELYONPAY_API_URL}/login",
                     json=payload,
                     headers={"Content-Type": "application/json"}
                 )
+                print(f"ElyonPay auth response status: {response.status_code}")
+                if response.status_code != 200:
+                    print(f"ElyonPay auth response body: {response.text}")
+                
                 response.raise_for_status()
                 data = response.json()
                 token = data["token"]
