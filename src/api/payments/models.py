@@ -53,7 +53,14 @@ class CinetPayPayment(CustomBaseModel, table=True):
     payment_method: Optional[str] = Field(default=None, max_length=50)
 
 
+class ElyonPayPayment(CustomBaseModel, table=True):
+    """Model for ElyonPay payments"""
+    __tablename__ = "elyonpay_payments"
 
-
-
-
+    transaction_id: str = Field(max_length=255, unique=True, index=True)
+    provider_transaction_id: Optional[str] = Field(default=None, max_length=255)
+    amount: float = Field(default=0.0)
+    currency: str = Field(default="XAF", max_length=3)
+    status: str = Field(default=PaymentStatusEnum.PENDING.value, max_length=20)
+    payment_url: Optional[str] = Field(default=None, max_length=512)
+    token: Optional[str] = Field(default=None) # Current JWT token used

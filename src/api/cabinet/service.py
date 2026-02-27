@@ -182,7 +182,7 @@ class CabinetApplicationService:
                 amount=application.payment_amount,
                 product_currency=application.payment_currency,
                 description=description,
-                payment_provider="CINETPAY",
+                payment_provider=settings.DEFAULT_PAYMENT_PROVIDER,
                 customer_name=application.company_name,
                 customer_surname="Cabinet",
                 customer_email=application.contact_email,

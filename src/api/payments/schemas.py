@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Any, Literal, Optional
 
 from typing import Union, TYPE_CHECKING
+from src.config import settings
 from src.api.job_offers.models import JobApplication
 from src.helper.schemas import BaseOutSuccess,BaseOutPage
 
@@ -30,12 +31,22 @@ class CinetPayInit(BaseModel):
     lock_phone_number : Optional[bool] = False  # Pour préfixer le numéro sur le guichet
     lang : Optional[str] = "fr"  # Langue du guichet (fr, en)
 
+class ElyonPayInit(BaseModel):
+    transaction_id: str
+    amount: float
+    currency: str = "XAF"
+    description: str
+    user_lang: str = "fr"
+    msisdn: Optional[str] = None
+    success_url: Optional[str] = None
+    error_url: Optional[str] = None
+
 class PaymentInitInput(BaseModel):
     payable: Any 
     amount: float
     product_currency: str 
     description: str
-    payment_provider: str = "CINETPAY"
+    payment_provider: str = settings.DEFAULT_PAYMENT_PROVIDER
     customer_name : Optional[str] = None
     customer_surname :  Optional[str] = None
     customer_email : Optional[str] = None

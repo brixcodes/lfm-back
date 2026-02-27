@@ -300,7 +300,7 @@ async def create_job_application(
         amount=job_offer.submission_fee,
         product_currency=job_offer.currency,
         description=description,
-        payment_provider="CINETPAY",
+        payment_provider=settings.DEFAULT_PAYMENT_PROVIDER,
         customer_name=input.last_name,
         customer_surname=input.first_name,
         customer_email=input.email,

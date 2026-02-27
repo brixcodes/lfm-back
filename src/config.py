@@ -129,6 +129,16 @@ class Settings(BaseSettings):
     CINETPAY_CARD_MAX_AMOUNT: int = 50000000  # Montant maximum pour les paiements par carte (500,000 XAF)
     CINETPAY_CARD_CURRENCY: str = "XAF"  # Devise pour les paiements par carte (Cameroun)
     
+    ## ElyonPay Configuration
+    ELYONPAY_USERNAME: str = ""
+    ELYONPAY_PASSWORD: str = ""
+    ELYONPAY_ROLE: str = "ROLE_CUSTOMER"
+    ELYONPAY_API_URL: str = "https://api.elyonpay.net/api"
+    ELYONPAY_SUCCESS_URL: str = "https://lafaom-mao.org/payment/success"
+    ELYONPAY_ERROR_URL: str = "https://lafaom-mao.org/payment/error"
+
+    DEFAULT_PAYMENT_PROVIDER: str = "ELYONPAY"
+    
     CURRENCY_API_KEY : str | None = None
     CURRENCY_API_URL: str | None = None
     

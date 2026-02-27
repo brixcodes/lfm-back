@@ -231,7 +231,7 @@ class StudentApplicationService:
             amount=amount,
             product_currency=target_session.currency,
             description=description,
-            payment_provider="CINETPAY",
+            payment_provider=settings.DEFAULT_PAYMENT_PROVIDER,
             payment_method="WALLET",  # Méthode par défaut pour les formations
             subscription_type="FORMATION",
             customer_name=user.last_name if user else None,
@@ -298,7 +298,7 @@ class StudentApplicationService:
             amount=amount,
             product_currency=target_session.currency,
             description=description,
-            payment_provider="CINETPAY",
+            payment_provider=settings.DEFAULT_PAYMENT_PROVIDER,
             payment_method="ONLINE",
             subscription_type="FORMATION",
             customer_name=user.last_name if user else None,

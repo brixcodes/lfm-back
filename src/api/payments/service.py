@@ -12,8 +12,8 @@ from src.api.job_offers.models import JobApplication
 from src.api.job_offers.service import JobOfferService
 from src.api.training.models import StudentApplication, TrainingFeeInstallmentPayment
 from src.config import settings
-from src.api.payments.models import CinetPayPayment, Payment, PaymentStatusEnum
-from src.api.payments.schemas import CinetPayInit, PaymentFilter, PaymentInitInput
+from src.api.payments.models import CinetPayPayment, ElyonPayPayment, Payment, PaymentStatusEnum
+from src.api.payments.schemas import CinetPayInit, ElyonPayInit, PaymentFilter, PaymentInitInput
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.database import get_session, get_session_async
@@ -295,14 +295,28 @@ class PaymentService:
         cinetpay_client = CinetPayService(self.session)
         
         try:
-            if is_swallow:
+            if payment_data.payment_provider == "ELYONPAY":
+                elyon_pay_data = ElyonPayInit(
+                    transaction_id=payment.transaction_id,
+                    amount=float(final_amount),
+                    currency=payment_currency,
+                    description=cleaned_description,
+                    user_lang=payment_data.lang or "fr",
+                    msisdn=payment_data.customer_phone_number,
+                    success_url=settings.ELYONPAY_SUCCESS_URL,
+                    error_url=settings.ELYONPAY_ERROR_URL
+                )
+                elyon_pay_client = ElyonPayService(self.session)
+                result = await elyon_pay_client.initiate_elyonpay_payment(elyon_pay_data)
+            elif is_swallow:
                 result = await cinetpay_client.initiate_cinetpay_swallow_payment(cinetpay_data)
             else :
                 result = await cinetpay_client.initiate_cinetpay_payment( cinetpay_data)
         except Exception as e:
+            print(f"Payment initiation error: {e}")
             return {
                 "success": False,
-                "message":"unable to initiate payment",
+                "message":f"unable to initiate payment: {str(e)}",
                 "amount": payment_data.amount,
                 "payment_link": None,
                 "transaction_id": None,
@@ -311,7 +325,7 @@ class PaymentService:
             }
         
         if result["status"] == "success":
-            cinetpay_payment = result["data"]
+            provider_payment = result["data"]
         else:
             return {
                 "success": False,
@@ -323,20 +337,22 @@ class PaymentService:
                 "notify_url": settings.CINETPAY_NOTIFY_URL
             }
         
-        payment.payment_type_id = str(cinetpay_payment.id)
-        payment.payment_type = cinetpay_payment.__class__.__name__
+        payment.payment_type_id = str(provider_payment.id)
+        payment.payment_type = provider_payment.__class__.__name__
         
         self.session.add(payment)
         await self.session.commit()
         await self.session.refresh(payment)
         
+        payment_link = provider_payment.payment_url
+        
         return {
             "success": True,
             "payment_provider": payment_data.payment_provider,
             "amount" : payment_data.amount,
-            "payment_link": cinetpay_payment.payment_url,
-            "transaction_id": cinetpay_payment.transaction_id,
-            "notify_url": settings.CINETPAY_NOTIFY_URL,
+            "payment_link": payment_link,
+            "transaction_id": provider_payment.transaction_id,
+            "notify_url": settings.CINETPAY_NOTIFY_URL if payment_data.payment_provider == "CINETPAY" else "",
             "message": ''
         }
         
@@ -412,9 +428,80 @@ class PaymentService:
                     payment.status = PaymentStatusEnum.PENDING.value
                     cinetpay_payment.status = PaymentStatusEnum.PENDING.value
                 
+                elif payment.payable_type == "TrainingFeeInstallmentPayment":
+                    statement = select(TrainingFeeInstallmentPayment).where(TrainingFeeInstallmentPayment.id == payment.payable_id)
+                    result = await self.session.execute(statement)
+                    fee_payment = result.scalars().one()
+                    fee_payment.payment_id = payment.id
+                    await self.session.commit()
+                    await self.session.refresh(fee_payment)
+                    print(f"✅ TrainingFeeInstallmentPayment {payment.payable_id} mis à jour avec payment_id: {payment.id}")
+
                 await self.session.commit()
                 await self.session.refresh(payment)
                 await self.session.refresh(cinetpay_payment)
+
+        elif payment.payment_type == "ElyonPayPayment":
+            statement = select(ElyonPayPayment).where(ElyonPayPayment.transaction_id == payment.transaction_id)
+            result = await self.session.execute(statement)
+            elyon_payment = result.scalars().first()
+            
+            if elyon_payment:
+                elyon_service = ElyonPayService(self.session)
+                # Use provider_transaction_id if available
+                status_check_id = elyon_payment.provider_transaction_id or payment.transaction_id
+                result = await elyon_service.check_elyonpay_payment_status(status_check_id, elyon_payment.token)
+                
+                if result:
+                    # Map ElyonPay status to our PaymentStatusEnum
+                    # States: CREATED, PENDING, ACCEPTED, REJECTED, DELIVERED, CANCELLED, DECLINED, WAITING_FOR_PAYMENT
+                    elyon_status = result.get("status")
+                    
+                    if elyon_status in ["ACCEPTED", "DELIVERED"]:
+                        payment.status = PaymentStatusEnum.ACCEPTED.value
+                        elyon_payment.status = PaymentStatusEnum.ACCEPTED.value
+                        
+                        # Apply payment effects (similar to CinetPay)
+                        if payment.payable_type == "JobApplication":
+                            job_application_service = JobOfferService(session=self.session)
+                            await job_application_service.update_job_application_payment(
+                                payment_id=str(payment.id),
+                                application_id=int(payment.payable_id)
+                            )
+                        elif payment.payable_type == "StudentApplication":
+                            statement = select(StudentApplication).where(StudentApplication.id == payment.payable_id)
+                            res = await self.session.execute(statement)
+                            student_app = res.scalars().one()
+                            student_app.payment_id = payment.id
+                            await self.session.commit()
+                        elif payment.payable_type == "CabinetApplication":
+                            from src.api.cabinet.models import CabinetApplication, PaymentStatus
+                            from datetime import datetime
+                            statement = select(CabinetApplication).where(CabinetApplication.id == payment.payable_id)
+                            res = await self.session.execute(statement)
+                            cabinet_app = res.scalars().one()
+                            cabinet_app.payment_id = payment.id
+                            cabinet_app.payment_status = PaymentStatus.PAID
+                            cabinet_app.payment_date = datetime.utcnow()
+                            await self.session.commit()
+                        elif payment.payable_type == "TrainingFeeInstallmentPayment":
+                            statement = select(TrainingFeeInstallmentPayment).where(TrainingFeeInstallmentPayment.id == payment.payable_id)
+                            res = await self.session.execute(statement)
+                            fee_payment = res.scalars().one()
+                            fee_payment.payment_id = payment.id
+                            await self.session.commit()
+                    
+                    elif elyon_status in ["REJECTED", "DECLINED"]:
+                        payment.status = PaymentStatusEnum.REFUSED.value
+                        elyon_payment.status = PaymentStatusEnum.REFUSED.value
+                    
+                    elif elyon_status == "CANCELLED":
+                        payment.status = PaymentStatusEnum.CANCELLED.value
+                        elyon_payment.status = PaymentStatusEnum.CANCELLED.value
+                    
+                    await self.session.commit()
+                    await self.session.refresh(payment)
+                    await self.session.refresh(elyon_payment)
 
         return payment
     
@@ -499,6 +586,63 @@ class PaymentService:
                     cinetpay_payment.status = PaymentStatusEnum.PENDING.value
                 
                 session.commit()
+
+        elif payment.payment_type == "ElyonPayPayment":
+            statement = select(ElyonPayPayment).where(ElyonPayPayment.transaction_id == payment.transaction_id)
+            elyon_payment = session.exec(statement).first()
+            
+            if elyon_payment:
+                elyon_service = ElyonPayService()
+                # We need sync auth and check if possible, or just skip sync check for ElyonPay for now
+                # In sync mode (Celery), we might need to use httpx.Client
+                token = elyon_service._get_auth_token_sync()
+                if token:
+                    status_check_id = elyon_payment.provider_transaction_id or payment.transaction_id
+                    result = elyon_service.check_elyonpay_payment_status_sync(status_check_id, token)
+                    
+                    if result:
+                        elyon_status = result.get("status")
+                        if elyon_status in ["ACCEPTED", "DELIVERED"]:
+                            payment.status = PaymentStatusEnum.ACCEPTED.value
+                            elyon_payment.status = PaymentStatusEnum.ACCEPTED.value
+                            
+                            # Apply payment effects sync
+                            if payment.payable_type == "JobApplication":
+                                statement = select(JobApplication).where(JobApplication.id == int(payment.payable_id))
+                                job_app = session.exec(statement).first()
+                                if job_app:
+                                    job_app.payment_id = payment.id
+                                    session.commit()
+                                    # Create user sync
+                                    PaymentService._create_job_application_user_sync_static(job_app, session)
+                            elif payment.payable_type == "StudentApplication":
+                                student_app = session.exec(select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))).first()
+                                if student_app:
+                                    student_app.payment_id = payment.id
+                                    session.commit()
+                            elif payment.payable_type == "CabinetApplication":
+                                from src.api.cabinet.models import CabinetApplication, PaymentStatus
+                                from datetime import datetime
+                                cabinet_app = session.exec(select(CabinetApplication).where(CabinetApplication.id == payment.payable_id)).first()
+                                if cabinet_app:
+                                    cabinet_app.payment_id = payment.id
+                                    cabinet_app.payment_status = PaymentStatus.PAID
+                                    cabinet_app.payment_date = datetime.utcnow()
+                                    session.commit()
+                            elif payment.payable_type == "TrainingFeeInstallmentPayment":
+                                fee_payment = session.exec(select(TrainingFeeInstallmentPayment).where(TrainingFeeInstallmentPayment.id == int(payment.payable_id))).first()
+                                if fee_payment:
+                                    fee_payment.payment_id = payment.id
+                                    session.commit()
+                        
+                        elif elyon_status in ["REJECTED", "DECLINED"]:
+                            payment.status = PaymentStatusEnum.REFUSED.value
+                            elyon_payment.status = PaymentStatusEnum.REFUSED.value
+                        elif elyon_status == "CANCELLED":
+                            payment.status = PaymentStatusEnum.CANCELLED.value
+                            elyon_payment.status = PaymentStatusEnum.CANCELLED.value
+                        
+                        session.commit()
 
         return payment
     
@@ -1068,4 +1212,204 @@ class CinetPayService:
         except Exception as e:
             print(f"Erreur lors de l'envoi de l'email: {e}")
             raise e
+
+
+class ElyonPayService:
+    def __init__(self, session: AsyncSession = Depends(get_session_async)) -> None:
+        self.session = session
+
+    async def _get_auth_token(self):
+        """Authentifiez-vous et recevez un JWT pour accéder aux points de terminaison protégés."""
+        cache_key = "elyonpay_auth_token"
+        try:
+            cached = await get_from_redis(cache_key)
+            if cached:
+                return cached
+        except Exception as e:
+            print(f"Redis cache error: {e}")
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            payload = {
+                "username": settings.ELYONPAY_USERNAME,
+                "password": settings.ELYONPAY_PASSWORD,
+                "role": settings.ELYONPAY_ROLE
+            }
+            try:
+                response = await client.post(
+                    f"{settings.ELYONPAY_API_URL}/login",
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                )
+                response.raise_for_status()
+                data = response.json()
+                token = data["token"]
+
+                # Cache token for some time (assuming validity is at least 1h)
+                try:
+                    await set_to_redis(cache_key, token, ex=3600)
+                except Exception as e:
+                    print(f"Redis cache set error: {e}")
+
+                return token
+            except Exception as e:
+                print(f"ElyonPay auth error: {e}")
+                return None
+
+    def _get_auth_token_sync(self):
+        """Authentifiez-vous et recevez un JWT (version synchrone)."""
+        # We could use Redis cache even in sync
+        import redis
+        # Simplistic approach for sync auth
+        with httpx.Client(timeout=10.0) as client:
+            payload = {
+                "username": settings.ELYONPAY_USERNAME,
+                "password": settings.ELYONPAY_PASSWORD,
+                "role": settings.ELYONPAY_ROLE
+            }
+            try:
+                response = client.post(
+                   f"{settings.ELYONPAY_API_URL}/login",
+                   json=payload,
+                   headers={"Content-Type": "application/json"}
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["token"]
+            except Exception as e:
+                print(f"ElyonPay sync auth error: {e}")
+                return None
+
+    async def initiate_elyonpay_payment(self, payment_data: ElyonPayInit):
+        """Génère un lien de transaction de paiement ElyonPay."""
+        token = await self._get_auth_token()
+        if not token:
+            return {
+                "status": "error",
+                "message": "Unable to authenticate with ElyonPay"
+            }
+
+        headers = {
+            "language": payment_data.user_lang,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}"
+        }
+
+        success_url = payment_data.success_url or settings.ELYONPAY_SUCCESS_URL
+        error_url = payment_data.error_url or settings.ELYONPAY_ERROR_URL
+        
+        # Append transaction_id to URLs for tracking on success/error pages
+        separator = "&" if "?" in success_url else "?"
+        success_url = f"{success_url}{separator}transaction_id={payment_data.transaction_id}"
+        
+        separator = "&" if "?" in error_url else "?"
+        error_url = f"{error_url}{separator}transaction_id={payment_data.transaction_id}"
+
+        payload = {
+            "amount": float(payment_data.amount),
+            "user_lang": payment_data.user_lang,
+            "msisdn": payment_data.msisdn,
+            "success": success_url,
+            "error": error_url
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.post(
+                    f"{settings.ELYONPAY_API_URL}/request-to-pay/payment/link",
+                    json=payload,
+                    headers=headers
+                )
+                response.raise_for_status()
+                result_data = response.json()
+                
+                # URL format: http://app.elyonpay.org/t/CI032667e43abf11?success=...
+                # Or based on doc: {"url": "...", "id": 153}
+                payment_url = result_data.get("url") or result_data.get("payment_link")
+                provider_id = result_data.get("id") or result_data.get("transaction_id")
+                
+                # If provider_id is missing, try to extract from URL
+                if not provider_id and payment_url:
+                    import re
+                    match = re.search(r'/t/([^?]+)', payment_url)
+                    if match:
+                        provider_id = match.group(1)
+
+                db_payment = ElyonPayPayment(
+                    transaction_id=payment_data.transaction_id,
+                    provider_transaction_id=str(provider_id) if provider_id else None,
+                    amount=payment_data.amount,
+                    currency=payment_data.currency,
+                    status="PENDING",
+                    payment_url=payment_url,
+                    token=token
+                )
+                self.session.add(db_payment)
+                await self.session.commit()
+                await self.session.refresh(db_payment)
+                
+                return {
+                    "status": "success",
+                    "payment_link": payment_url,
+                    "transaction_id": payment_data.transaction_id,
+                    "provider_id": provider_id,
+                    "data": db_payment
+                }
+            except Exception as e:
+                print(f"ElyonPay initiate error: {e}")
+                error_msg = str(e)
+                try:
+                    if hasattr(e, 'response') and e.response:
+                        error_msg = e.response.text
+                except:
+                    pass
+                return {
+                    "status": "error",
+                    "message": f"ElyonPay initiate failure: {error_msg}"
+                }
+
+    async def check_elyonpay_payment_status(self, provider_transaction_id: str, token: str):
+        """Vérifie le statut d'une transaction ElyonPay."""
+        if not provider_transaction_id:
+            return None
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json"
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(
+                    f"{settings.ELYONPAY_API_URL}/transactions/{provider_transaction_id}",
+                    headers=headers
+                )
+                if response.status_code == 200:
+                    return response.json()
+                return None
+            except Exception as e:
+                print(f"Error checking ElyonPay payment status: {e}")
+                return None
+
+    @staticmethod
+    def check_elyonpay_payment_status_sync(provider_transaction_id: str, token: str):
+        """Vérifie le statut d'une transaction ElyonPay (version synchrone)."""
+        if not provider_transaction_id:
+            return None
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json"
+        }
+        with httpx.Client(timeout=30.0) as client:
+            try:
+                response = client.get(
+                    f"{settings.ELYONPAY_API_URL}/transactions/{provider_transaction_id}",
+                    headers=headers
+                )
+                if response.status_code == 200:
+                    return response.json()
+                return None
+            except Exception as e:
+                print(f"Error checking ElyonPay payment status (sync): {e}")
+                return None
 
