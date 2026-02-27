@@ -27,6 +27,9 @@ db/
 /src/uploads/
 
 .env
+.development.env
+*.env
+
 
 /src/laakam.json
 /src/lafaom.json
@@ -105,4 +108,8 @@ Thumbs.db
 *.avi
 *.flv
 *.mov
-*.wmv
+*.wmv.development.env
+*.env
+.env
+.development.env
+*.env
