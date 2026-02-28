@@ -129,6 +129,16 @@ class JobOfferService:
         application_data["currency"] = job_offer.currency
         application_data["submission_fee"] = job_offer.submission_fee
         
+        # Update user phone number if it changed in the form
+        from src.api.user.models import User
+        user_stmt = select(User).where(User.email == data.email)
+        user_res = await self.session.execute(user_stmt)
+        existing_user = user_res.scalars().first()
+        if existing_user and data.phone_number and existing_user.mobile_number != data.phone_number:
+            existing_user.mobile_number = data.phone_number
+            self.session.add(existing_user)
+            # Will be committed with job_application below
+
         job_application = JobApplication(**application_data)
         self.session.add(job_application)
         await self.session.commit()
