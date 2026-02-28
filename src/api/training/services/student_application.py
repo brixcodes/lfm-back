@@ -386,23 +386,26 @@ class StudentApplicationService:
             statement = statement.where(StudentApplication.user_id == user_id)
             count_query = count_query.where(StudentApplication.user_id == user_id)
 
+        # Apply payment_method filter if provided
+        if filters.payment_method:
+            statement = statement.where(StudentApplication.payment_method == filters.payment_method)
+            count_query = count_query.where(StudentApplication.payment_method == filters.payment_method)
+
         # Filtrage par paiement basé sur payment_method
         payment_filter = filters.is_paid if filters.is_paid is not None else None
         if payment_filter is not None:
             if payment_filter:
-                # "Paid": n'importe quel ONLINE avec un payment_id OU TRANSFER
-                paid_condition = or_(
-                    StudentApplication.payment_id.is_not(None),
-                    StudentApplication.payment_method == "TRANSFER"
+                # "Paid": Only confirmed ONLINE payments
+                # Those we are SURE of (Status is APPROVED)
+                paid_condition = and_(
+                    StudentApplication.status == ApplicationStatusEnum.APPROVED.value,
+                    StudentApplication.payment_method == "ONLINE"
                 )
                 statement = statement.where(paid_condition)
                 count_query = count_query.where(paid_condition)
             else:
-                # "Unpaid": Pas de payment_id ET pas TRANSFER
-                unpaid_condition = and_(
-                    StudentApplication.payment_id.is_(None),
-                    StudentApplication.payment_method != "TRANSFER"
-                )
+                # "Unpaid": Anything not APPROVED (typically RECEIVED, SUBMITTED or REFUSED)
+                unpaid_condition = (StudentApplication.status != ApplicationStatusEnum.APPROVED.value)
                 statement = statement.where(unpaid_condition)
                 count_query = count_query.where(unpaid_condition)
 

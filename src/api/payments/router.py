@@ -1,7 +1,8 @@
 import hashlib
 import hmac
 from typing import Annotated, Optional
-from fastapi import APIRouter, Depends, Form, HTTPException, Header,Query
+from fastapi import APIRouter, Depends, Form, HTTPException, Header, Query, status
+from fastapi.responses import RedirectResponse
 from src.api.auth.utils import check_permissions
 from src.api.payments.dependencies import get_payment_by_transaction
 from src.api.payments.models import PaymentStatusEnum
@@ -159,4 +160,25 @@ async def get_payment_status(
         "message" : "success",
         "data": payment
     }
+
+@router.get("/elyon/callback")
+async def elyon_callback(
+    transaction_id: str,
+    payment_service: PaymentService = Depends()
+):
+    """
+    Backend callback for ElyonPay to update status before redirecting to frontend.
+    """
+    payment = await payment_service.get_payment_by_transaction_id(transaction_id)
+    
+    if not payment:
+        return RedirectResponse(url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}&message=payment_not_found")
+        
+    if payment.status == PaymentStatusEnum.PENDING.value:
+        payment = await payment_service.check_payment_status(payment)
+        
+    if payment.status == PaymentStatusEnum.ACCEPTED.value:
+        return RedirectResponse(url=f"{settings.ELYONPAY_SUCCESS_URL}?transaction_id={transaction_id}")
+    else:
+        return RedirectResponse(url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}")
 

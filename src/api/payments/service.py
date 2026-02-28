@@ -617,17 +617,28 @@ class PaymentService:
                             select(JobApplication).where(JobApplication.id == int(payment.payable_id))
                             )
                         job_application = session.exec(job_application_statement).first()
-                        job_application.payment_id = str(payment.id)
-                        session.commit()
-                        session.refresh(job_application)
-                        # Créer automatiquement un compte utilisateur pour le candidat
-                        PaymentService._create_job_application_user_sync_static(job_application, session)
+                        if job_application:
+                            job_application.payment_id = str(payment.id)
+                            from src.api.job_offers.models import ApplicationStatusEnum as JobStatus
+                            job_application.status = JobStatus.APPROVED.value
+                            session.add(job_application)
+                            session.commit()
+                            session.refresh(job_application)
+                            # Créer automatiquement un compte utilisateur pour le candidat
+                            PaymentService._create_job_application_user_sync_static(job_application, session)
                     
                     elif payment.payable_type == "StudentApplication":
                         statement = select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))
                         student_application = session.exec(statement).first()
-                        student_application.payment_id = str(payment.id)
-                        session.commit()
+                        if student_application:
+                            student_application.payment_id = str(payment.id)
+                            from src.api.training.models import ApplicationStatusEnum as StudentStatus
+                            student_application.status = StudentStatus.APPROVED.value
+                            session.add(student_application)
+                            session.commit()
+                            
+                            # Note: Enrolling to Moodle sync might be complex, usually done via Celery task or async
+                            # For now we ensure the status and paymentID are set.
                         
                     elif payment.payable_type == "TrainingFeeInstallmentPayment" :
                         training_fee_installment_payment_statement = (
@@ -689,6 +700,9 @@ class PaymentService:
                                 job_app = session.exec(statement).first()
                                 if job_app:
                                     job_app.payment_id = str(payment.id)
+                                    from src.api.job_offers.models import ApplicationStatusEnum as JobStatus
+                                    job_app.status = JobStatus.APPROVED.value
+                                    session.add(job_app)
                                     session.commit()
                                     # Create user sync
                                     PaymentService._create_job_application_user_sync_static(job_app, session)
@@ -696,6 +710,9 @@ class PaymentService:
                                 student_app = session.exec(select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))).first()
                                 if student_app:
                                     student_app.payment_id = str(payment.id)
+                                    from src.api.training.models import ApplicationStatusEnum as StudentStatus
+                                    student_app.status = StudentStatus.APPROVED.value
+                                    session.add(student_app)
                                     session.commit()
                             elif payment.payable_type == "CabinetApplication":
                                 from src.api.cabinet.models import CabinetApplication, PaymentStatus
@@ -1380,15 +1397,12 @@ class ElyonPayService:
             "Authorization": f"Bearer {token}"
         }
 
-        success_url = payment_data.success_url or settings.ELYONPAY_SUCCESS_URL
-        error_url = payment_data.error_url or settings.ELYONPAY_ERROR_URL
+        # Backend callback to handle status update BEFORE redirecting to frontend
+        # This ensures the database is updated even if frontend redirect is flaky
+        callback_url = f"{settings.API_BASE_URL}/api/v1/payments/elyon/callback?transaction_id={payment_data.transaction_id}"
         
-        # Append transaction_id to URLs for tracking on success/error pages
-        separator = "&" if "?" in success_url else "?"
-        success_url = f"{success_url}{separator}transaction_id={payment_data.transaction_id}"
-        
-        separator = "&" if "?" in error_url else "?"
-        error_url = f"{error_url}{separator}transaction_id={payment_data.transaction_id}"
+        success_url = callback_url
+        error_url = callback_url
 
         # Ensure phone number (msisdn) is correctly formatted with '+' prefix
         phone = payment_data.msisdn.strip() if payment_data.msisdn else ""
