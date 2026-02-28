@@ -80,6 +80,23 @@ class StudentApplicationService:
                 password=default_password
             ).send_notification()  
             
+        else:
+            # Update existing user info if provided in form
+            updated = False
+            if data.phone_number and user.mobile_number != data.phone_number:
+                user.mobile_number = data.phone_number
+                updated = True
+            if data.first_name and not user.first_name:
+                user.first_name = data.first_name
+                updated = True
+            if data.last_name and not user.last_name:
+                user.last_name = data.last_name
+                updated = True
+            
+            if updated:
+                self.session.add(user)
+                # Will be committed with the application below
+                
         session_stmt = select(TrainingSession).where(TrainingSession.id == data.target_session_id)
         session_res = await self.session.execute(session_stmt)
         target_session = session_res.scalars().first()

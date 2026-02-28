@@ -719,10 +719,18 @@ class PaymentService:
                     result = elyon_service.check_elyonpay_payment_status_sync(status_check_id, token)
                     
                     if result:
-                        elyon_status = result.get("status")
-                        if elyon_status in ["ACCEPTED", "DELIVERED"]:
+                        # Detect status from state (primary) or transactionStates or status (fallback)
+                        raw_state = result.get("state")
+                        if not raw_state and result.get("transactionStates"):
+                            raw_state = result.get("transactionStates")[-1].get("state")
+                        
+                        elyon_status = str(raw_state or result.get("status") or "").upper()
+                        print(f"DEBUG SYNC: ElyonPay API returned status: '{elyon_status}' for {payment.transaction_id}")
+
+                        if elyon_status in ["ACCEPTED", "DELIVERED", "SUCCESS", "SUCCESSFUL", "PAID", "COMPLETED"]:
                             payment.status = PaymentStatusEnum.ACCEPTED.value
                             elyon_payment.status = PaymentStatusEnum.ACCEPTED.value
+                            print(f"✅ SUCCESS SYNC: confirmed as {elyon_status}")
                             
                             # Apply payment effects sync
                             if payment.payable_type == "JobApplication":
@@ -759,10 +767,10 @@ class PaymentService:
                                     fee_payment.payment_id = str(payment.id)
                                     session.commit()
                         
-                        elif elyon_status in ["REJECTED", "DECLINED"]:
+                        elif elyon_status in ["REJECTED", "DECLINED", "FAILED", "ERROR"]:
                             payment.status = PaymentStatusEnum.REFUSED.value
                             elyon_payment.status = PaymentStatusEnum.REFUSED.value
-                        elif elyon_status == "CANCELLED":
+                        elif elyon_status in ["CANCELLED", "CANCELED"]:
                             payment.status = PaymentStatusEnum.CANCELLED.value
                             elyon_payment.status = PaymentStatusEnum.CANCELLED.value
                         

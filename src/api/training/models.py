@@ -83,6 +83,7 @@ class TrainingSessionParticipant(CustomBaseModel, table=True):
     session_id: str = Field(foreign_key="training_sessions.id", nullable=False)
     user_id: str = Field(foreign_key="users.id", nullable=False)
     application_id: Optional[int] = Field(default=None, index=True, unique=True)
+    joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_type=TIMESTAMP(timezone=True))
     
     # Relationships
     training_session: Optional[TrainingSession] = Relationship()
