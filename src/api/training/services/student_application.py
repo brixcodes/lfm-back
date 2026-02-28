@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 from datetime import date, datetime, timezone
 from fastapi import Depends, HTTPException ,status
 from sqlalchemy import func, update 
-from sqlalchemy import  and_, case
+from sqlalchemy import  and_, case, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload , joinedload
 from sqlmodel import select, or_
@@ -391,21 +391,28 @@ class StudentApplicationService:
             statement = statement.where(StudentApplication.payment_method == filters.payment_method)
             count_query = count_query.where(StudentApplication.payment_method == filters.payment_method)
 
-        # Filtrage par paiement basé sur payment_method
+        # Filtrage par paiement
         payment_filter = filters.is_paid if filters.is_paid is not None else None
         if payment_filter is not None:
             if payment_filter:
-                # "Paid": Only confirmed ONLINE payments
-                # Those we are SURE of (Status is APPROVED)
-                paid_condition = and_(
-                    StudentApplication.status == ApplicationStatusEnum.APPROVED.value,
-                    StudentApplication.payment_method == "ONLINE"
+                # "Paid" =
+                #   - ONLINE payments confirmed (APPROVED)
+                #   - OR all TRANSFER payments (to be reviewed manually by staff)
+                paid_condition = or_(
+                    and_(
+                        StudentApplication.status == ApplicationStatusEnum.APPROVED.value,
+                        StudentApplication.payment_method == "ONLINE"
+                    ),
+                    StudentApplication.payment_method == "TRANSFER"
                 )
                 statement = statement.where(paid_condition)
                 count_query = count_query.where(paid_condition)
             else:
-                # "Unpaid": Anything not APPROVED (typically RECEIVED, SUBMITTED or REFUSED)
-                unpaid_condition = (StudentApplication.status != ApplicationStatusEnum.APPROVED.value)
+                # "Unpaid": ONLINE not yet APPROVED — excludes TRANSFER
+                unpaid_condition = and_(
+                    StudentApplication.status != ApplicationStatusEnum.APPROVED.value,
+                    StudentApplication.payment_method == "ONLINE"
+                )
                 statement = statement.where(unpaid_condition)
                 count_query = count_query.where(unpaid_condition)
 

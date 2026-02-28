@@ -185,21 +185,30 @@ class JobOfferService:
             statement = statement.where(JobApplication.payment_method == filters.payment_method)
             count_query = count_query.where(JobApplication.payment_method == filters.payment_method)
         
-        payment_filter = filters.is_paid if filters.is_paid is not None else filters.payment_id
+        payment_filter = filters.is_paid if filters.is_paid is not None else None
         
         if payment_filter is not None:
             if payment_filter:
-                # "Paid": Only confirmed ONLINE payments to satisfy "uniquement payés en ligne"
-                # Those we are SURE of (Status is APPROVED)
-                paid_condition = and_(
-                    JobApplication.status == ApplicationStatusEnum.APPROVED.value,
-                    JobApplication.payment_method == "ONLINE"
+                # "Payées" = 
+                #   1. Toutes les candidatures avec payment_method="TRANSFER" 
+                #      (virements bancaires — validation manuelle par l'équipe)
+                #   2. Candidatures ONLINE avec statut confirmé APPROVED
+                #      (paiement confirmé automatiquement par ElyonPay/CinetPay)
+                paid_condition = or_(
+                    JobApplication.payment_method == "TRANSFER",
+                    and_(
+                        JobApplication.payment_method == "ONLINE",
+                        JobApplication.status == ApplicationStatusEnum.APPROVED.value
+                    )
                 )
                 statement = statement.where(paid_condition)
                 count_query = count_query.where(paid_condition)
             else:
-                # "Unpaid": Anything not APPROVED (typically RECEIVED or REFUSED)
-                unpaid_condition = (JobApplication.status != ApplicationStatusEnum.APPROVED.value)
+                # "Non-payées": Candidatures ONLINE en attente de confirmation
+                unpaid_condition = and_(
+                    JobApplication.payment_method == "ONLINE",
+                    JobApplication.status != ApplicationStatusEnum.APPROVED.value
+                )
                 statement = statement.where(unpaid_condition)
                 count_query = count_query.where(unpaid_condition)
 
