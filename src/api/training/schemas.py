@@ -193,7 +193,7 @@ class StudentApplicationFilter(BaseModel):
     search: Optional[str] = None
     training_id: Optional[str] = None
     training_session_id: Optional[str] = None
-    is_paid: Optional[bool] = True
+    is_paid: Optional[bool] = None
     status: Optional[str] = None
     order_by: Literal["created_at"] = "created_at"
     asc: Literal["asc", "desc"] = "asc"

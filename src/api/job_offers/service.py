@@ -184,21 +184,18 @@ class JobOfferService:
         
         if payment_filter is not None:
             if payment_filter:
-                # "Paid": TRANSFER (tous) OU (ONLINE ET payment_id NOT NULL)
+                # "Paid": n'importe quel ONLINE avec un payment_id OU TRANSFER
                 paid_condition = or_(
-                    JobApplication.payment_method == "TRANSFER",
-                    and_(
-                        JobApplication.payment_method == "ONLINE",
-                        JobApplication.payment_id.is_not(None)
-                    )
+                    JobApplication.payment_id.is_not(None),
+                    JobApplication.payment_method == "TRANSFER"
                 )
                 statement = statement.where(paid_condition)
                 count_query = count_query.where(paid_condition)
             else:
-                # "Unpaid": Seulement ONLINE ET payment_id IS NULL (exclure TRANSFER)
+                # "Unpaid": Pas de payment_id ET pas TRANSFER
                 unpaid_condition = and_(
-                    JobApplication.payment_method == "ONLINE",
-                    JobApplication.payment_id.is_(None)
+                    JobApplication.payment_id.is_(None),
+                    JobApplication.payment_method != "TRANSFER"
                 )
                 statement = statement.where(unpaid_condition)
                 count_query = count_query.where(unpaid_condition)

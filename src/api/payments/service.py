@@ -444,7 +444,7 @@ class PaymentService:
                         statement = select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))
                         result = await self.session.execute(statement)
                         student_application = result.scalars().one()
-                        student_application.payment_id = payment.id
+                        student_application.payment_id = str(payment.id)
                         
                         # Mettre à jour le statut en 'APPROVED' (validé)
                         from src.api.training.models import ApplicationStatusEnum as StudentStatus
@@ -466,7 +466,7 @@ class PaymentService:
                         statement = select(CabinetApplication).where(CabinetApplication.id == payment.payable_id)
                         result = await self.session.execute(statement)
                         cabinet_application = result.scalars().one()
-                        cabinet_application.payment_id = payment.id
+                        cabinet_application.payment_id = str(payment.id)
                         cabinet_application.payment_status = PaymentStatus.PAID
                         cabinet_application.payment_date = datetime.utcnow()
                         await self.session.commit()
@@ -487,7 +487,7 @@ class PaymentService:
                     statement = select(TrainingFeeInstallmentPayment).where(TrainingFeeInstallmentPayment.id == payment.payable_id)
                     result = await self.session.execute(statement)
                     fee_payment = result.scalars().one()
-                    fee_payment.payment_id = payment.id
+                    fee_payment.payment_id = str(payment.id)
                     await self.session.commit()
                     await self.session.refresh(fee_payment)
                     print(f"✅ TrainingFeeInstallmentPayment {payment.payable_id} mis à jour avec payment_id: {payment.id}")
@@ -507,14 +507,17 @@ class PaymentService:
                 status_check_id = elyon_payment.provider_transaction_id or payment.transaction_id
                 result = await elyon_service.check_elyonpay_payment_status(status_check_id, elyon_payment.token)
                 
+                print(f"DEBUG: ElyonPay status check result: {result}")
                 if result:
                     # Map ElyonPay status to our PaymentStatusEnum
                     # States: CREATED, PENDING, ACCEPTED, REJECTED, DELIVERED, CANCELLED, DECLINED, WAITING_FOR_PAYMENT
                     elyon_status = result.get("status")
+                    print(f"DEBUG: Mapping ElyonPay status '{elyon_status}' for {payment.transaction_id}")
                     
                     if elyon_status in ["ACCEPTED", "DELIVERED", "SUCCESS"]:
                         payment.status = PaymentStatusEnum.ACCEPTED.value
                         elyon_payment.status = PaymentStatusEnum.ACCEPTED.value
+                        print(f"DEBUG: Payment ACCEPTED for transaction {payment.transaction_id}")
                         
                         # Apply payment effects (similar to CinetPay)
                         if payment.payable_type == "JobApplication":
@@ -535,7 +538,7 @@ class PaymentService:
                             statement = select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))
                             res = await self.session.execute(statement)
                             student_app = res.scalars().one()
-                            student_app.payment_id = payment.id
+                            student_app.payment_id = str(payment.id)
                             
                             # Mettre à jour le statut en 'APPROVED' (validé)
                             from src.api.training.models import ApplicationStatusEnum as StudentStatus
@@ -554,7 +557,7 @@ class PaymentService:
                             statement = select(CabinetApplication).where(CabinetApplication.id == payment.payable_id)
                             res = await self.session.execute(statement)
                             cabinet_app = res.scalars().one()
-                            cabinet_app.payment_id = payment.id
+                            cabinet_app.payment_id = str(payment.id)
                             cabinet_app.payment_status = PaymentStatus.PAID
                             cabinet_app.payment_date = datetime.utcnow()
                             await self.session.commit()
@@ -562,7 +565,7 @@ class PaymentService:
                             statement = select(TrainingFeeInstallmentPayment).where(TrainingFeeInstallmentPayment.id == int(payment.payable_id))
                             res = await self.session.execute(statement)
                             fee_payment = res.scalars().one()
-                            fee_payment.payment_id = payment.id
+                            fee_payment.payment_id = str(payment.id)
                             await self.session.commit()
                     
                     elif elyon_status in ["REJECTED", "DECLINED"]:
@@ -614,7 +617,7 @@ class PaymentService:
                             select(JobApplication).where(JobApplication.id == int(payment.payable_id))
                             )
                         job_application = session.exec(job_application_statement).first()
-                        job_application.payment_id = payment.id
+                        job_application.payment_id = str(payment.id)
                         session.commit()
                         session.refresh(job_application)
                         # Créer automatiquement un compte utilisateur pour le candidat
@@ -623,7 +626,7 @@ class PaymentService:
                     elif payment.payable_type == "StudentApplication":
                         statement = select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))
                         student_application = session.exec(statement).first()
-                        student_application.payment_id = payment.id
+                        student_application.payment_id = str(payment.id)
                         session.commit()
                         
                     elif payment.payable_type == "TrainingFeeInstallmentPayment" :
@@ -631,7 +634,7 @@ class PaymentService:
                             select(TrainingFeeInstallmentPayment).where(TrainingFeeInstallmentPayment.id == int(payment.payable_id))
                             )
                         training_fee_installment_payment = session.exec(training_fee_installment_payment_statement).first()
-                        training_fee_installment_payment.payment_id = payment.id
+                        training_fee_installment_payment.payment_id = str(payment.id)
                         session.commit()
                     
                     elif payment.payable_type == "CabinetApplication":
@@ -642,7 +645,7 @@ class PaymentService:
                         )
                         cabinet_application = session.exec(cabinet_application_statement).first()
                         if cabinet_application:
-                            cabinet_application.payment_id = payment.id
+                            cabinet_application.payment_id = str(payment.id)
                             cabinet_application.payment_status = PaymentStatus.PAID
                             cabinet_application.payment_date = datetime.utcnow()
                             session.commit()
@@ -685,28 +688,28 @@ class PaymentService:
                                 statement = select(JobApplication).where(JobApplication.id == int(payment.payable_id))
                                 job_app = session.exec(statement).first()
                                 if job_app:
-                                    job_app.payment_id = payment.id
+                                    job_app.payment_id = str(payment.id)
                                     session.commit()
                                     # Create user sync
                                     PaymentService._create_job_application_user_sync_static(job_app, session)
                             elif payment.payable_type == "StudentApplication":
                                 student_app = session.exec(select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))).first()
                                 if student_app:
-                                    student_app.payment_id = payment.id
+                                    student_app.payment_id = str(payment.id)
                                     session.commit()
                             elif payment.payable_type == "CabinetApplication":
                                 from src.api.cabinet.models import CabinetApplication, PaymentStatus
                                 from datetime import datetime
                                 cabinet_app = session.exec(select(CabinetApplication).where(CabinetApplication.id == payment.payable_id)).first()
                                 if cabinet_app:
-                                    cabinet_app.payment_id = payment.id
+                                    cabinet_app.payment_id = str(payment.id)
                                     cabinet_app.payment_status = PaymentStatus.PAID
                                     cabinet_app.payment_date = datetime.utcnow()
                                     session.commit()
                             elif payment.payable_type == "TrainingFeeInstallmentPayment":
                                 fee_payment = session.exec(select(TrainingFeeInstallmentPayment).where(TrainingFeeInstallmentPayment.id == int(payment.payable_id))).first()
                                 if fee_payment:
-                                    fee_payment.payment_id = payment.id
+                                    fee_payment.payment_id = str(payment.id)
                                     session.commit()
                         
                         elif elyon_status in ["REJECTED", "DECLINED"]:
