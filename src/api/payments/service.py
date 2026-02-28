@@ -426,39 +426,45 @@ class PaymentService:
                     cinetpay_payment.payment_method = result["data"].get("payment_method", "")
                     
                     if payment.payable_type == "JobApplication":
-                        job_application_service = JobOfferService(session=self.session)
-                        # payment.id est un UUID (string), payable_id est une string représentant un int
-                        job_app = await job_application_service.update_job_application_payment(
-                            payment_id=str(payment.id),
-                            application_id=int(payment.payable_id)
-                        )
+                        # Récupérer la candidature directement dans cette session
+                        from src.api.job_offers.models import ApplicationStatusEnum as JobStatus
+                        from src.api.job_offers.models import JobApplication
+                        stmt = select(JobApplication).where(JobApplication.id == int(payment.payable_id))
+                        res = await self.session.execute(stmt)
+                        job_app = res.scalars().first()
                         if job_app:
-                            from src.api.job_offers.models import ApplicationStatusEnum as JobStatus
+                            # Mettre à jour payment_id ET status en une seule transaction
+                            job_app.payment_id = str(payment.id)
                             job_app.status = JobStatus.APPROVED.value
                             self.session.add(job_app)
-                            # Create candidate account
+                            print(f"✅ [CinetPay] JobApplication {payment.payable_id} → payment_id={payment.id}, status=APPROVED")
+                            await self.session.commit()
+                            await self.session.refresh(job_app)
                             await self._create_job_application_user_async(job_app)
-                        await self.session.commit()
+                        else:
+                            print(f"⚠️ [CinetPay] JobApplication {payment.payable_id} introuvable")
+                            await self.session.commit()
                     
                     elif payment.payable_type == "StudentApplication":
-                        statement = select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))
-                        result = await self.session.execute(statement)
-                        student_application = result.scalars().one()
-                        student_application.payment_id = str(payment.id)
-                        
-                        # Mettre à jour le statut en 'APPROVED' (validé)
-                        from src.api.training.models import ApplicationStatusEnum as StudentStatus
-                        student_application.status = StudentStatus.APPROVED.value
-                        
-                        await self.session.commit()
-                        await self.session.refresh(student_application)
-                        
-                        # Inscrire l'étudiant (Moodle, etc.)
-                        from src.api.training.services.student_application import StudentApplicationService
-                        training_service = StudentApplicationService(self.session)
-                        await training_service.enroll_student_to_session(student_application)
-                        
-                        print(f"✅ StudentApplication {payment.payable_id} approuvée et inscrite")
+                        stmt_student = select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))
+                        res_student = await self.session.execute(stmt_student)
+                        student_application = res_student.scalars().first()
+                        if student_application:
+                            student_application.payment_id = str(payment.id)
+                            # Mettre à jour le statut en 'APPROVED' (validé)
+                            from src.api.training.models import ApplicationStatusEnum as StudentStatus
+                            student_application.status = StudentStatus.APPROVED.value
+                            self.session.add(student_application)
+                            print(f"✅ [CinetPay] StudentApplication {payment.payable_id} → payment_id={payment.id}, status=APPROVED")
+                            await self.session.commit()
+                            await self.session.refresh(student_application)
+                            # Inscrire l'étudiant (Moodle, etc.)
+                            from src.api.training.services.student_application import StudentApplicationService
+                            training_service = StudentApplicationService(self.session)
+                            await training_service.enroll_student_to_session(student_application)
+                        else:
+                            print(f"⚠️ [CinetPay] StudentApplication {payment.payable_id} introuvable")
+                            await self.session.commit()
                     
                     elif payment.payable_type == "CabinetApplication":
                         from src.api.cabinet.models import CabinetApplication, PaymentStatus
@@ -519,20 +525,27 @@ class PaymentService:
                         elyon_payment.status = PaymentStatusEnum.ACCEPTED.value
                         print(f"✅ SUCCESS: Transaction confirmed as {elyon_status}")
                         
-                        # Apply payment effects (similar to CinetPay)
+                        # Apply payment effects
                         if payment.payable_type == "JobApplication":
-                            job_application_service = JobOfferService(session=self.session)
-                            job_app = await job_application_service.update_job_application_payment(
-                                payment_id=str(payment.id),
-                                application_id=int(payment.payable_id)
-                            )
-                            # SUCCESS: Set to APPROVED (validé) and create candidate account
+                            # Récupérer la candidature directement dans cette session
+                            from src.api.job_offers.models import ApplicationStatusEnum as JobStatus
+                            from src.api.job_offers.models import JobApplication
+                            stmt = select(JobApplication).where(JobApplication.id == int(payment.payable_id))
+                            res = await self.session.execute(stmt)
+                            job_app = res.scalars().first()
                             if job_app:
-                                from src.api.job_offers.models import ApplicationStatusEnum as JobStatus
+                                # Mettre à jour payment_id ET status en une seule transaction
+                                job_app.payment_id = str(payment.id)
                                 job_app.status = JobStatus.APPROVED.value
                                 self.session.add(job_app)
+                                print(f"✅ JobApplication {payment.payable_id} → payment_id={payment.id}, status=APPROVED")
+                                await self.session.commit()
+                                await self.session.refresh(job_app)
+                                # Créer le compte candidat en arrière-plan
                                 await self._create_job_application_user_async(job_app)
-                            await self.session.commit()
+                            else:
+                                print(f"⚠️ JobApplication {payment.payable_id} introuvable")
+                                await self.session.commit()
                         
                         elif payment.payable_type == "StudentApplication":
                             statement = select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))
