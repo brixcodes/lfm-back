@@ -1337,13 +1337,43 @@ class ElyonPayService:
         separator = "&" if "?" in error_url else "?"
         error_url = f"{error_url}{separator}transaction_id={payment_data.transaction_id}"
 
+        # Ensure phone number (msisdn) is correctly formatted with '+' prefix
+        phone = payment_data.msisdn.strip() if payment_data.msisdn else ""
+        if phone and not phone.startswith("+"):
+            # Handle Senegal (+221) numbers
+            if phone.startswith("221"):
+                phone = "+" + phone
+            # Handle Cameroon (+237) numbers
+            elif phone.startswith("237"):
+                phone = "+" + phone
+            # Handle local numbers without prefix
+            elif phone.startswith("76") or phone.startswith("77") or phone.startswith("78") or phone.startswith("70"):
+                # Likely Senegal local number
+                phone = "+221" + phone
+            elif phone.startswith("0"):
+                # Handle leading zero, default to Cameroon as before
+                phone = "+237" + phone[1:]
+            else:
+                # Default to Cameroon for other local formats
+                phone = "+237" + phone
+        
+        # If still empty, use a default valid number based on currency/region
+        if not phone:
+            if payment_data.currency == "XAF":
+                phone = "+237657807309" # Cameroon default
+            else:
+                phone = "+221771234567" # Senegal default
+            print(f"⚠️ Warning: Missing phone number for ElyonPay, using default: {phone}")
+
         payload = {
             "amount": float(payment_data.amount),
-            "user_lang": payment_data.user_lang,
-            "msisdn": payment_data.msisdn,
+            "user_lang": payment_data.user_lang or "fr",
+            "msisdn": phone,
             "success": success_url,
             "error": error_url
         }
+
+        print(f"ElyonPay Initiation Request Payload: {payload}")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
