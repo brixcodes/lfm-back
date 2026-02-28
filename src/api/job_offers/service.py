@@ -192,21 +192,26 @@ class JobOfferService:
                 # "Payées" = 
                 #   1. Toutes les candidatures avec payment_method="TRANSFER" 
                 #      (virements bancaires — validation manuelle par l'équipe)
-                #   2. Candidatures ONLINE avec statut confirmé APPROVED
-                #      (paiement confirmé automatiquement par ElyonPay/CinetPay)
+                #   2. Candidatures ONLINE (ou NULL) avec statut confirmé APPROVED
                 paid_condition = or_(
                     JobApplication.payment_method == "TRANSFER",
                     and_(
-                        JobApplication.payment_method == "ONLINE",
+                        or_(
+                            JobApplication.payment_method == "ONLINE",
+                            JobApplication.payment_method.is_(None)
+                        ),
                         JobApplication.status == ApplicationStatusEnum.APPROVED.value
                     )
                 )
                 statement = statement.where(paid_condition)
                 count_query = count_query.where(paid_condition)
             else:
-                # "Non-payées": Candidatures ONLINE en attente de confirmation
+                # "Non-payées": Candidatures ONLINE (ou NULL) en attente de confirmation
                 unpaid_condition = and_(
-                    JobApplication.payment_method == "ONLINE",
+                    or_(
+                        JobApplication.payment_method == "ONLINE",
+                        JobApplication.payment_method.is_(None)
+                    ),
                     JobApplication.status != ApplicationStatusEnum.APPROVED.value
                 )
                 statement = statement.where(unpaid_condition)

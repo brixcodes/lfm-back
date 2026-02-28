@@ -8,16 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload , joinedload
 from sqlmodel import select, or_
 
-from src.api.job_offers.models import ApplicationStatusEnum
 from src.database import get_session_async
-from src.api.training.models import (
-    TrainingFeeInstallmentPayment,
-    TrainingSession,
-    StudentApplication,
-    StudentAttachment,
-    TrainingSessionParticipant,
-    Training,
-)
+from src.api.training.models import ApplicationStatusEnum, StudentApplication, StudentAttachment, TrainingSessionParticipant, Training, TrainingSession, TrainingFeeInstallmentPayment
 from src.api.training.schemas import (
     ChangeStudentApplicationStatusInput,
     PayTrainingFeeInstallmentInput,
@@ -398,10 +390,14 @@ class StudentApplicationService:
                 # "Paid" =
                 #   - ONLINE payments confirmed (APPROVED)
                 #   - OR all TRANSFER payments (to be reviewed manually by staff)
+                # Note: We use or_(..., is_(None)) to handle existing data with NULL payment_method
                 paid_condition = or_(
                     and_(
                         StudentApplication.status == ApplicationStatusEnum.APPROVED.value,
-                        StudentApplication.payment_method == "ONLINE"
+                        or_(
+                            StudentApplication.payment_method == "ONLINE",
+                            StudentApplication.payment_method.is_(None)
+                        )
                     ),
                     StudentApplication.payment_method == "TRANSFER"
                 )
@@ -411,7 +407,10 @@ class StudentApplicationService:
                 # "Unpaid": ONLINE not yet APPROVED — excludes TRANSFER
                 unpaid_condition = and_(
                     StudentApplication.status != ApplicationStatusEnum.APPROVED.value,
-                    StudentApplication.payment_method == "ONLINE"
+                    or_(
+                        StudentApplication.payment_method == "ONLINE",
+                        StudentApplication.payment_method.is_(None)
+                    )
                 )
                 statement = statement.where(unpaid_condition)
                 count_query = count_query.where(unpaid_condition)

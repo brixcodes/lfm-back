@@ -517,10 +517,10 @@ class PaymentService:
                 if result:
                     # Map ElyonPay status to our PaymentStatusEnum
                     # States: CREATED, PENDING, ACCEPTED, REJECTED, DELIVERED, CANCELLED, DECLINED, WAITING_FOR_PAYMENT
-                    elyon_status = result.get("status")
+                    elyon_status = str(result.get("status", "")).upper()
                     print(f"DEBUG: ElyonPay API returned status: '{elyon_status}' for internal ID {payment.transaction_id}")
                     
-                    if elyon_status in ["ACCEPTED", "DELIVERED", "SUCCESS"]:
+                    if elyon_status in ["ACCEPTED", "DELIVERED", "SUCCESS", "SUCCESSFUL", "PAID", "COMPLETED"]:
                         payment.status = PaymentStatusEnum.ACCEPTED.value
                         elyon_payment.status = PaymentStatusEnum.ACCEPTED.value
                         print(f"✅ SUCCESS: Transaction confirmed as {elyon_status}")
@@ -548,22 +548,26 @@ class PaymentService:
                                 await self.session.commit()
                         
                         elif payment.payable_type == "StudentApplication":
-                            statement = select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))
-                            res = await self.session.execute(statement)
-                            student_app = res.scalars().one()
-                            student_app.payment_id = str(payment.id)
-                            
-                            # Mettre à jour le statut en 'APPROVED' (validé)
-                            from src.api.training.models import ApplicationStatusEnum as StudentStatus
-                            student_app.status = StudentStatus.APPROVED.value
-                            await self.session.commit()
-                            
-                            # Inscrire l'étudiant (Moodle, etc.)
-                            from src.api.training.services.student_application import StudentApplicationService
-                            training_service = StudentApplicationService(self.session)
-                            await training_service.enroll_student_to_session(student_app)
-                            
-                            print(f"✅ StudentApplication {payment.payable_id} approuvée et inscrite (Elyon)")
+                            stmt_student = select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))
+                            res_student = await self.session.execute(stmt_student)
+                            student_app = res_student.scalars().first()
+                            if student_app:
+                                student_app.payment_id = str(payment.id)
+                                # Mettre à jour le statut en 'APPROVED' (validé)
+                                from src.api.training.models import ApplicationStatusEnum as StudentStatus
+                                student_app.status = StudentStatus.APPROVED.value
+                                self.session.add(student_app)
+                                print(f"✅ [ElyonPay] StudentApplication {payment.payable_id} → payment_id={payment.id}, status=APPROVED")
+                                await self.session.commit()
+                                await self.session.refresh(student_app)
+                                
+                                # Inscrire l'étudiant (Moodle, etc.)
+                                from src.api.training.services.student_application import StudentApplicationService
+                                training_service = StudentApplicationService(self.session)
+                                await training_service.enroll_student_to_session(student_app)
+                            else:
+                                print(f"⚠️ [ElyonPay] StudentApplication {payment.payable_id} introuvable")
+                                await self.session.commit()
                         elif payment.payable_type == "CabinetApplication":
                             from src.api.cabinet.models import CabinetApplication, PaymentStatus
                             from datetime import datetime
@@ -575,17 +579,23 @@ class PaymentService:
                             cabinet_app.payment_date = datetime.utcnow()
                             await self.session.commit()
                         elif payment.payable_type == "TrainingFeeInstallmentPayment":
-                            statement = select(TrainingFeeInstallmentPayment).where(TrainingFeeInstallmentPayment.id == int(payment.payable_id))
-                            res = await self.session.execute(statement)
-                            fee_payment = res.scalars().one()
-                            fee_payment.payment_id = str(payment.id)
-                            await self.session.commit()
+                            stmt_fee = select(TrainingFeeInstallmentPayment).where(TrainingFeeInstallmentPayment.id == int(payment.payable_id))
+                            res_fee = await self.session.execute(stmt_fee)
+                            fee_payment = res_fee.scalars().first()
+                            if fee_payment:
+                                fee_payment.payment_id = str(payment.id)
+                                self.session.add(fee_payment)
+                                await self.session.commit()
+                                print(f"✅ [ElyonPay] TrainingFeeInstallmentPayment {payment.payable_id} mis à jour avec payment_id: {payment.id}")
+                            else:
+                                print(f"⚠️ [ElyonPay] TrainingFeeInstallmentPayment {payment.payable_id} introuvable")
+                                await self.session.commit()
                     
-                    elif elyon_status in ["REJECTED", "DECLINED"]:
+                    elif elyon_status in ["REJECTED", "DECLINED", "FAILED", "ERROR"]:
                         payment.status = PaymentStatusEnum.REFUSED.value
                         elyon_payment.status = PaymentStatusEnum.REFUSED.value
                     
-                    elif elyon_status == "CANCELLED":
+                    elif elyon_status in ["CANCELLED", "CANCELED"]:
                         payment.status = PaymentStatusEnum.CANCELLED.value
                         elyon_payment.status = PaymentStatusEnum.CANCELLED.value
                     
