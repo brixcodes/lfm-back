@@ -146,18 +146,26 @@ async def cinetpay_webhook_handler(
     # 6️⃣ Répondre avec succès (200 OK attendu par CinetPay)
     return {"ok": True}
 
-@router.get("/check-status/{transaction_id}",response_model=PaymentOutSuccess)
-async def get_payment_status(
+@router.get("/check-status/{transaction_id}", response_model=PaymentOutSuccess)
+async def check_payment_status_route(
     transaction_id: str,
-    payment : Annotated[User, Depends(get_payment_by_transaction)],
+    payment: Annotated[any, Depends(get_payment_by_transaction)],
     payment_service: PaymentService = Depends()
 ):
-    if payment.status == PaymentStatusEnum.PENDING.value:
-        
+    """
+    Check payment status. Always calls the provider if status is not definitively terminal.
+    A terminal status means ACCEPTED with payment_id linked, or REFUSED/CANCELLED.
+    """
+    # Non-terminal statuses always trigger a fresh check with the provider
+    non_terminal = [
+        PaymentStatusEnum.PENDING.value,
+        PaymentStatusEnum.ERROR.value,  # Error might be transient
+    ]
+    if payment.status in non_terminal:
         payment = await payment_service.check_payment_status(payment)
-        
+
     return {
-        "message" : "success",
+        "message": "success",
         "data": payment
     }
 
@@ -168,23 +176,47 @@ async def elyon_callback(
     payment_service: PaymentService = Depends()
 ):
     """
-    Backend callback for ElyonPay to update status before redirecting to frontend.
+    Backend callback for ElyonPay.
+    
+    ElyonPay calls this with ?status=success or ?status=error.
+    We ALWAYS verify the real status with ElyonPay's API before redirecting,
+    so that the database is reliably updated before the user reaches the frontend.
+    This avoids any race condition where the frontend might show 'success' before
+    the DB is updated.
     """
     payment = await payment_service.get_payment_by_transaction_id(transaction_id)
-    
-    if not payment:
-        return RedirectResponse(url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}&message=payment_not_found")
-        
-    if status == "error":
-        # Even if redirected to error, we might want to check the actual status once to be sure
-        # but generally we should redirect to error page
-        return RedirectResponse(url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}")
 
-    if payment.status == PaymentStatusEnum.PENDING.value:
+    if not payment:
+        return RedirectResponse(
+            url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}&message=payment_not_found",
+            status_code=302
+        )
+
+    # If ElyonPay redirected to the error URL, no need to call their API — it's a failure.
+    # But we still update our DB to reflect the real status.
+    if status == "error":
+        # Only update if still pending (don't overwrite a retried ACCEPTED status)
+        if payment.status == PaymentStatusEnum.PENDING.value:
+            # Call provider to get the definitive status (might be CANCELLED, REJECTED, etc.)
+            payment = await payment_service.check_payment_status(payment)
+        return RedirectResponse(
+            url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}",
+            status_code=302
+        )
+
+    # For success or unknown status: ALWAYS verify with ElyonPay API before redirecting.
+    # This is the most reliable approach — trust the provider API, not the redirect URL.
+    if payment.status not in [PaymentStatusEnum.ACCEPTED.value, PaymentStatusEnum.REFUSED.value, PaymentStatusEnum.CANCELLED.value]:
         payment = await payment_service.check_payment_status(payment)
-        
+
     if payment.status == PaymentStatusEnum.ACCEPTED.value:
-        return RedirectResponse(url=f"{settings.ELYONPAY_SUCCESS_URL}?transaction_id={transaction_id}")
+        return RedirectResponse(
+            url=f"{settings.ELYONPAY_SUCCESS_URL}?transaction_id={transaction_id}",
+            status_code=302
+        )
     else:
-        return RedirectResponse(url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}")
+        return RedirectResponse(
+            url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}",
+            status_code=302
+        )
 

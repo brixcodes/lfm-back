@@ -29,8 +29,35 @@ async def list_student_applications_admin(
     current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_STUDENT_APPLICATION]))],
     student_app_service: StudentApplicationService = Depends(),
 ):
+    """Get paid student applications by default (status=APPROVED, payment_method=ONLINE)"""
+    # Force is_paid to True by default for the main endpoint
+    if input.is_paid is None:
+        input.is_paid = True
     applications, total = await student_app_service.get_student_application(filters=input, user_id=None)
-    
+    return {"data": applications, "page": input.page, "number": len(applications), "total_number": total}
+
+
+@router.get("/student-applications/paid", response_model=StudentApplicationsPageOutSuccess, tags=["Student Application"])
+async def list_paid_student_applications_admin(
+    input: Annotated[StudentApplicationFilter, Query(...)],
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_STUDENT_APPLICATION]))],
+    student_app_service: StudentApplicationService = Depends(),
+):
+    """Get only paid student applications (APPROVED + ONLINE payment confirmed)"""
+    input.is_paid = True
+    applications, total = await student_app_service.get_student_application(filters=input, user_id=None)
+    return {"data": applications, "page": input.page, "number": len(applications), "total_number": total}
+
+
+@router.get("/student-applications/all", response_model=StudentApplicationsPageOutSuccess, tags=["Student Application"])
+async def list_all_student_applications_admin(
+    input: Annotated[StudentApplicationFilter, Query(...)],
+    current_user: Annotated[User, Depends(check_permissions([PermissionEnum.CAN_VIEW_STUDENT_APPLICATION]))],
+    student_app_service: StudentApplicationService = Depends(),
+):
+    """Get ALL student applications regardless of payment status"""
+    input.is_paid = None
+    applications, total = await student_app_service.get_student_application(filters=input, user_id=None)
     return {"data": applications, "page": input.page, "number": len(applications), "total_number": total}
 
 
