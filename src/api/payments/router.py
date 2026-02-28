@@ -192,31 +192,33 @@ async def elyon_callback(
             status_code=302
         )
 
-    # If ElyonPay redirected to the error URL, no need to call their API — it's a failure.
-    # But we still update our DB to reflect the real status.
-    if status == "error":
-        # Only update if still pending (don't overwrite a retried ACCEPTED status)
-        if payment.status == PaymentStatusEnum.PENDING.value:
-            # Call provider to get the definitive status (might be CANCELLED, REJECTED, etc.)
-            payment = await payment_service.check_payment_status(payment)
-        return RedirectResponse(
-            url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}",
-            status_code=302
-        )
-
-    # For success or unknown status: ALWAYS verify with ElyonPay API before redirecting.
-    # This is the most reliable approach — trust the provider API, not the redirect URL.
-    if payment.status not in [PaymentStatusEnum.ACCEPTED.value, PaymentStatusEnum.REFUSED.value, PaymentStatusEnum.CANCELLED.value]:
+    # Ne jamais faire confiance au paramètre 'status' de l'URL pour la décision finale.
+    # ElyonPay peut envoyer ?status=error même pour un paiement réussi (bug connu de certains prestataires).
+    # La SOURCE DE VÉRITÉ est toujours l'API ElyonPay, pas le paramètre URL.
+    
+    # On vérifie uniquement si on ne connaît pas encore le statut définitif
+    definitive_statuses = [
+        PaymentStatusEnum.ACCEPTED.value,
+        PaymentStatusEnum.REFUSED.value,
+        PaymentStatusEnum.CANCELLED.value,
+    ]
+    if payment.status not in definitive_statuses:
+        print(f"🔍 [ELYON CALLBACK] Vérification API pour transaction {transaction_id} (URL status={status})")
         payment = await payment_service.check_payment_status(payment)
+        print(f"✅ [ELYON CALLBACK] Statut après vérification API: {payment.status}")
 
+    # Décision basée UNIQUEMENT sur le statut DB (mis à jour depuis l'API ElyonPay)
     if payment.status == PaymentStatusEnum.ACCEPTED.value:
+        print(f"✅ [ELYON CALLBACK] Redirection SUCCÈS pour {transaction_id}")
         return RedirectResponse(
             url=f"{settings.ELYONPAY_SUCCESS_URL}?transaction_id={transaction_id}",
             status_code=302
         )
     else:
+        print(f"❌ [ELYON CALLBACK] Redirection ERREUR pour {transaction_id} (statut={payment.status})")
         return RedirectResponse(
             url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}",
             status_code=302
         )
+
 
