@@ -260,17 +260,9 @@ async def create_student_application(
 
             # Optionnel: sauvegarder l'identifiant/URL de paiement dans la candidature
             # (adapter les noms de colonnes à ton modèle ORM)
-            try:
-                application.payment_provider = payment_info.payment_provider
-                application.transaction_id = payment_info.transaction_id
-                application.payment_url = str(payment_info.payment_link) if payment_info.payment_link else None
-                application.payment_status = payment_info.status
-                # si tu as un champ payment_id numérique ou UUID, remplis-le aussi
-                # application.payment_id = payment_info.transaction_id
-                await student_app_service.save(application)
-            except Exception as e:
-                # Ne bloque pas le retour au frontend si la sauvegarde échoue, mais logge l'erreur
-                print("WARN: unable to persist payment info to application:", e)
+            # La liaison application.payment_id est déjà gérée lors du check_payment_status
+            # On évite d'assigner des colonnes qui n'existent pas sur le modèle StudentApplication
+            pass
 
         else:
             # paiement non réussi côté provider -> log et renvoyer erreur HTTP si tu veux

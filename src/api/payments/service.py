@@ -517,8 +517,15 @@ class PaymentService:
                 if result:
                     # Map ElyonPay status to our PaymentStatusEnum
                     # States: CREATED, PENDING, ACCEPTED, REJECTED, DELIVERED, CANCELLED, DECLINED, WAITING_FOR_PAYMENT
-                    elyon_status = str(result.get("status", "")).upper()
-                    print(f"DEBUG: ElyonPay API returned status: '{elyon_status}' for internal ID {payment.transaction_id}")
+                    # ElyonPay uses 'state' as the primary field for the transaction status
+                    # We also check 'transactionStates' list as a backup or 'status'
+                    raw_state = result.get("state")
+                    if not raw_state and result.get("transactionStates"):
+                        # Get state from the last entry in transactionStates list
+                        raw_state = result.get("transactionStates")[-1].get("state")
+                    
+                    elyon_status = str(raw_state or result.get("status") or "").upper()
+                    print(f"DEBUG: ElyonPay API returned status: '{elyon_status}' (from state/states/status) for transaction {payment.transaction_id}")
                     
                     if elyon_status in ["ACCEPTED", "DELIVERED", "SUCCESS", "SUCCESSFUL", "PAID", "COMPLETED"]:
                         payment.status = PaymentStatusEnum.ACCEPTED.value
