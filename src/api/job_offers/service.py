@@ -466,10 +466,11 @@ class JobOfferService:
         total_result = await self.session.execute(total_stmt)
         total_applications = total_result.scalar() or 0
         
-        # Paid applications
+        # Paid applications: Only confirmed ONLINE payments (APPROVED)
         paid_stmt = select(func.count(JobApplication.id)).where(
             JobApplication.delete_at.is_(None),
-            JobApplication.payment_id.is_not(None)
+            JobApplication.status == ApplicationStatusEnum.APPROVED.value,
+            JobApplication.payment_method == "ONLINE"
         )
         paid_result = await self.session.execute(paid_stmt)
         paid_applications = paid_result.scalar() or 0
@@ -480,7 +481,8 @@ class JobOfferService:
         # Total revenue from paid applications
         revenue_stmt = select(func.sum(JobApplication.submission_fee)).where(
             JobApplication.delete_at.is_(None),
-            JobApplication.payment_id.is_not(None)
+            JobApplication.status == ApplicationStatusEnum.APPROVED.value,
+            JobApplication.payment_method == "ONLINE"
         )
         revenue_result = await self.session.execute(revenue_stmt)
         total_revenue = revenue_result.scalar() or 0.0

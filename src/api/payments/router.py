@@ -164,6 +164,7 @@ async def get_payment_status(
 @router.get("/elyon/callback")
 async def elyon_callback(
     transaction_id: str,
+    status: Optional[str] = None,
     payment_service: PaymentService = Depends()
 ):
     """
@@ -174,6 +175,11 @@ async def elyon_callback(
     if not payment:
         return RedirectResponse(url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}&message=payment_not_found")
         
+    if status == "error":
+        # Even if redirected to error, we might want to check the actual status once to be sure
+        # but generally we should redirect to error page
+        return RedirectResponse(url=f"{settings.ELYONPAY_ERROR_URL}?transaction_id={transaction_id}")
+
     if payment.status == PaymentStatusEnum.PENDING.value:
         payment = await payment_service.check_payment_status(payment)
         

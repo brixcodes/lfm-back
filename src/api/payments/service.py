@@ -512,12 +512,12 @@ class PaymentService:
                     # Map ElyonPay status to our PaymentStatusEnum
                     # States: CREATED, PENDING, ACCEPTED, REJECTED, DELIVERED, CANCELLED, DECLINED, WAITING_FOR_PAYMENT
                     elyon_status = result.get("status")
-                    print(f"DEBUG: Mapping ElyonPay status '{elyon_status}' for {payment.transaction_id}")
+                    print(f"DEBUG: ElyonPay API returned status: '{elyon_status}' for internal ID {payment.transaction_id}")
                     
                     if elyon_status in ["ACCEPTED", "DELIVERED", "SUCCESS"]:
                         payment.status = PaymentStatusEnum.ACCEPTED.value
                         elyon_payment.status = PaymentStatusEnum.ACCEPTED.value
-                        print(f"DEBUG: Payment ACCEPTED for transaction {payment.transaction_id}")
+                        print(f"✅ SUCCESS: Transaction confirmed as {elyon_status}")
                         
                         # Apply payment effects (similar to CinetPay)
                         if payment.payable_type == "JobApplication":
@@ -1399,10 +1399,11 @@ class ElyonPayService:
 
         # Backend callback to handle status update BEFORE redirecting to frontend
         # This ensures the database is updated even if frontend redirect is flaky
-        callback_url = f"{settings.API_BASE_URL}/api/v1/payments/elyon/callback?transaction_id={payment_data.transaction_id}"
+        success_callback = f"{settings.API_BASE_URL}/api/v1/payments/elyon/callback?transaction_id={payment_data.transaction_id}&status=success"
+        error_callback = f"{settings.API_BASE_URL}/api/v1/payments/elyon/callback?transaction_id={payment_data.transaction_id}&status=error"
         
-        success_url = callback_url
-        error_url = callback_url
+        success_url = success_callback
+        error_url = error_callback
 
         # Ensure phone number (msisdn) is correctly formatted with '+' prefix
         phone = payment_data.msisdn.strip() if payment_data.msisdn else ""
