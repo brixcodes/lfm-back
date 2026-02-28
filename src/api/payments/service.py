@@ -209,37 +209,39 @@ class PaymentService:
 
     async def initiate_payment(self, payment_data: PaymentInitInput,is_swallow: bool = False):
         
-        if payment_data.payment_provider == "CINETPAY":
-            payment_currency = "XAF"  # XAF pour le compte CinetPay
-        else :
-            payment_currency = payment_data.product_currency
+        # Forcer la devise de paiement à XAF pour assurer la conversion depuis l'EUR/USD
+        payment_currency = "XAF"
 
+        # Taux pivot USD vers devises cibles (car l'API gratuite force souvent le USD comme source)
         try:
-            quota = await self.get_currency_rates(payment_data.product_currency, [payment_currency])
-            product_currency_to_payment_currency_rate = quota[f"{payment_data.product_currency}{payment_currency}"]
+            quota = await self.get_currency_rates("USD", [payment_currency, payment_data.product_currency])
+            
+            usd_to_payment_currency_rate = quota.get(f"USD{payment_currency}", 655.957)
+            usd_to_product_currency_rate = quota.get(f"USD{payment_data.product_currency}", 1.0)
+            
+            # Calcul du taux croisé : 1 ProductCurrency = X PaymentCurrency
+            # Exemple: Si 1 USD = 655 XAF et 1 USD = 0.9 EUR, alors 1 EUR = 655 / 0.9 = 727 XAF
+            product_currency_to_payment_currency_rate = usd_to_payment_currency_rate / usd_to_product_currency_rate
+            
+            print(f"Currency Pivot - 1 USD = {usd_to_payment_currency_rate} {payment_currency}")
+            print(f"Currency Pivot - 1 USD = {usd_to_product_currency_rate} {payment_data.product_currency}")
+            
         except Exception as e:
-            print(f"Currency conversion error: {e}")
-            # Utiliser un taux par défaut si la conversion échoue
-            if payment_currency == "XAF" and payment_data.product_currency == "EUR":
-                product_currency_to_payment_currency_rate = 650.0  # 1 EUR = 650 XAF
-            elif payment_currency == "XAF" and payment_data.product_currency == "USD":
-                product_currency_to_payment_currency_rate = 600.0  # 1 USD = 600 XAF
+            print(f"Currency conversion error (USD pivot): {e}")
+            # Utiliser des taux par défaut si la conversion échoué
+            if payment_data.product_currency == "EUR":
+                product_currency_to_payment_currency_rate = 655.957
+            elif payment_data.product_currency == "USD":
+                product_currency_to_payment_currency_rate = 650.0
             else:
-                product_currency_to_payment_currency_rate = 1.0  # Pas de conversion
+                product_currency_to_payment_currency_rate = 1.0
+            
+            usd_to_payment_currency_rate = 655.957
+            usd_to_product_currency_rate = 1.0
         
         print(f"Currency Conversion - Original Amount: {payment_data.amount} {payment_data.product_currency}")
         print(f"Currency Conversion - Rate: {product_currency_to_payment_currency_rate}")
         print(f"Currency Conversion - Converted Amount: {payment_data.amount * product_currency_to_payment_currency_rate} {payment_currency}")
-        
-        try:
-            quota = await self.get_currency_rates("USD", [payment_currency, payment_data.product_currency])
-            usd_to_payment_currency_rate = quota[f"USD{payment_currency}"]
-            usd_to_product_currency_rate = quota[f"USD{payment_data.product_currency}"]
-        except Exception as e:
-            print(f"USD currency conversion error: {e}")
-            # Utiliser des taux par défaut
-            usd_to_payment_currency_rate = 600.0 if payment_currency == "XAF" else 1.0
-            usd_to_product_currency_rate = 1.0 if payment_data.product_currency == "USD" else 0.0017
         
 
         # Générer un transaction_id sans caractères spéciaux pour CinetPay
@@ -291,10 +293,21 @@ class PaymentService:
         cleaned_description = clean_payment_description(base_description)
         print(f"Description générée: {cleaned_description} (type: {payable_type})")
         
-        # Construire les données CinetPay avec tous les champs requis (identique aux tests qui fonctionnent)
+        # Forcer le canal CARTE BANCAIRE (CREDIT_CARD) pour CinetPay
+        channels = payment_data.channels
+        if not channels or channels == "ALL":
+             channels = "CREDIT_CARD"
+
+        # CinetPay nécessite des informations client valides pour les paiements par carte
+        cust_name = (payment_data.customer_name or "").strip() or "Client"
+        cust_surname = (payment_data.customer_surname or "").strip() or "Lafaom"
+        cust_email = (payment_data.customer_email or "").strip() or "contact@lafaom-mao.org"
+        cust_phone = (payment_data.customer_phone_number or "").strip() or "+237657807309"
+
+        # Construire les données CinetPay avec tous les champs requis
         cinetpay_data = CinetPayInit(
             transaction_id=payment.transaction_id,
-            amount=int(final_amount),  # S'assurer que c'est un entier
+            amount=int(final_amount),
             currency=payment_currency,
             description=cleaned_description,
             meta=f"{payment_data.payable.__class__.__name__}-{payment_data.payable.id}",
@@ -302,16 +315,16 @@ class PaymentService:
                 "payable": payment.payable_type,
                 "payable_id": payment.payable_id
             },
-            customer_name=payment_data.customer_name,
-            customer_surname=payment_data.customer_surname,
-            customer_email=payment_data.customer_email,
-            customer_phone_number=payment_data.customer_phone_number,
-            customer_address=payment_data.customer_address,
-            customer_city=payment_data.customer_city,
-            customer_country=payment_data.customer_country,
-            customer_state=payment_data.customer_state,
-            customer_zip_code=payment_data.customer_zip_code,
-            channels=payment_data.channels,
+            customer_name=cust_name,
+            customer_surname=cust_surname,
+            customer_email=cust_email,
+            customer_phone_number=cust_phone,
+            customer_address=payment_data.customer_address or "Koundi",
+            customer_city=payment_data.customer_city or "Yaounde",
+            customer_country=payment_data.customer_country or "CM",
+            customer_state=payment_data.customer_state or "CE",
+            customer_zip_code=payment_data.customer_zip_code or "00237",
+            channels=channels,
             lock_phone_number=payment_data.lock_phone_number or False,
             lang=payment_data.lang or "fr"
         )
@@ -415,19 +428,37 @@ class PaymentService:
                     if payment.payable_type == "JobApplication":
                         job_application_service = JobOfferService(session=self.session)
                         # payment.id est un UUID (string), payable_id est une string représentant un int
-                        job_offer = await job_application_service.update_job_application_payment(
+                        job_app = await job_application_service.update_job_application_payment(
                             payment_id=str(payment.id),
                             application_id=int(payment.payable_id)
                         )
+                        if job_app:
+                            from src.api.job_offers.models import ApplicationStatusEnum as JobStatus
+                            job_app.status = JobStatus.APPROVED.value
+                            self.session.add(job_app)
+                            # Create candidate account
+                            await self._create_job_application_user_async(job_app)
+                        await self.session.commit()
                     
                     elif payment.payable_type == "StudentApplication":
-                        statement = select(StudentApplication).where(StudentApplication.id == payment.payable_id)
+                        statement = select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))
                         result = await self.session.execute(statement)
                         student_application = result.scalars().one()
                         student_application.payment_id = payment.id
+                        
+                        # Mettre à jour le statut en 'APPROVED' (validé)
+                        from src.api.training.models import ApplicationStatusEnum as StudentStatus
+                        student_application.status = StudentStatus.APPROVED.value
+                        
                         await self.session.commit()
                         await self.session.refresh(student_application)
-                        print(f"✅ StudentApplication {payment.payable_id} mis à jour avec payment_id: {payment.id}")
+                        
+                        # Inscrire l'étudiant (Moodle, etc.)
+                        from src.api.training.services.student_application import StudentApplicationService
+                        training_service = StudentApplicationService(self.session)
+                        await training_service.enroll_student_to_session(student_application)
+                        
+                        print(f"✅ StudentApplication {payment.payable_id} approuvée et inscrite")
                     
                     elif payment.payable_type == "CabinetApplication":
                         from src.api.cabinet.models import CabinetApplication, PaymentStatus
@@ -481,23 +512,42 @@ class PaymentService:
                     # States: CREATED, PENDING, ACCEPTED, REJECTED, DELIVERED, CANCELLED, DECLINED, WAITING_FOR_PAYMENT
                     elyon_status = result.get("status")
                     
-                    if elyon_status in ["ACCEPTED", "DELIVERED"]:
+                    if elyon_status in ["ACCEPTED", "DELIVERED", "SUCCESS"]:
                         payment.status = PaymentStatusEnum.ACCEPTED.value
                         elyon_payment.status = PaymentStatusEnum.ACCEPTED.value
                         
                         # Apply payment effects (similar to CinetPay)
                         if payment.payable_type == "JobApplication":
                             job_application_service = JobOfferService(session=self.session)
-                            await job_application_service.update_job_application_payment(
+                            job_app = await job_application_service.update_job_application_payment(
                                 payment_id=str(payment.id),
                                 application_id=int(payment.payable_id)
                             )
+                            # SUCCESS: Set to APPROVED (validé) and create candidate account
+                            if job_app:
+                                from src.api.job_offers.models import ApplicationStatusEnum as JobStatus
+                                job_app.status = JobStatus.APPROVED.value
+                                self.session.add(job_app)
+                                await self._create_job_application_user_async(job_app)
+                            await self.session.commit()
+                        
                         elif payment.payable_type == "StudentApplication":
-                            statement = select(StudentApplication).where(StudentApplication.id == payment.payable_id)
+                            statement = select(StudentApplication).where(StudentApplication.id == int(payment.payable_id))
                             res = await self.session.execute(statement)
                             student_app = res.scalars().one()
                             student_app.payment_id = payment.id
+                            
+                            # Mettre à jour le statut en 'APPROVED' (validé)
+                            from src.api.training.models import ApplicationStatusEnum as StudentStatus
+                            student_app.status = StudentStatus.APPROVED.value
                             await self.session.commit()
+                            
+                            # Inscrire l'étudiant (Moodle, etc.)
+                            from src.api.training.services.student_application import StudentApplicationService
+                            training_service = StudentApplicationService(self.session)
+                            await training_service.enroll_student_to_session(student_app)
+                            
+                            print(f"✅ StudentApplication {payment.payable_id} approuvée et inscrite (Elyon)")
                         elif payment.payable_type == "CabinetApplication":
                             from src.api.cabinet.models import CabinetApplication, PaymentStatus
                             from datetime import datetime
@@ -509,7 +559,7 @@ class PaymentService:
                             cabinet_app.payment_date = datetime.utcnow()
                             await self.session.commit()
                         elif payment.payable_type == "TrainingFeeInstallmentPayment":
-                            statement = select(TrainingFeeInstallmentPayment).where(TrainingFeeInstallmentPayment.id == payment.payable_id)
+                            statement = select(TrainingFeeInstallmentPayment).where(TrainingFeeInstallmentPayment.id == int(payment.payable_id))
                             res = await self.session.execute(statement)
                             fee_payment = res.scalars().one()
                             fee_payment.payment_id = payment.id
@@ -1474,4 +1524,35 @@ class ElyonPayService:
             except Exception as e:
                 print(f"Error checking ElyonPay payment status (sync): {e}")
                 return None
+
+    async def _create_job_application_user_async(self, job_app: JobApplication) -> None:
+        """Créer un compte utilisateur pour le candidat d'emploi (async)"""
+        try:
+            temp_password = PaymentService._generate_temp_password_static()
+            from src.api.user.service import UserService
+            from src.api.user.models import UserTypeEnum, UserStatusEnum
+            user_service = UserService(self.session)
+            user = await user_service.get_by_email(job_app.email)
+            if not user:
+                create_input = {
+                    "first_name": job_app.first_name,
+                    "last_name": job_app.last_name,
+                    "email": job_app.email,
+                    "mobile_number": job_app.phone_number,
+                    "password": temp_password,
+                    "user_type": UserTypeEnum.STUDENT,
+                    "status": UserStatusEnum.ACTIVE
+                }
+                user = await user_service.create(create_input)
+                from src.helper.notifications import SendPasswordNotification
+                SendPasswordNotification(
+                    email=job_app.email,
+                    name=f"{job_app.first_name} {job_app.last_name}",
+                    password=temp_password
+                ).send_notification()
+            job_app.user_id = user.id
+            self.session.add(job_app)
+            await self.session.commit()
+        except Exception as e:
+            print(f"Erreur création compte candidat (async): {e}")
 
