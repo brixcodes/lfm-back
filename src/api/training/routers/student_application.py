@@ -111,7 +111,10 @@ async def change_student_application_status_admin(
             ).model_dump(),
         )
     
-    if application.payment_id == None :
+    # Pour les paiements en ligne (ONLINE), le paiement doit être confirmé avant d'approuver.
+    # Pour les virements bancaires (TRANSFER), l'admin valide manuellement sans payment_id.
+    is_transfer = getattr(application, "payment_method", None) == "TRANSFER"
+    if not is_transfer and application.payment_id is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=BaseOutFail(
@@ -120,10 +123,10 @@ async def change_student_application_status_admin(
             ).model_dump(),
         )
         
-    await student_app_service.change_student_application_status(application,input)
+    await student_app_service.change_student_application_status(application, input)
     full_application = await student_app_service.get_full_student_application_by_id(application_id, user_id=None)
     
-    return {"message": "Student application fetched successfully", "data": full_application}
+    return {"message": "Student application status updated successfully", "data": full_application}
 
 @router.get("/student-applications/{application_id}/attachments", response_model=StudentAttachmentListOutSuccess, tags=["Student Application"])
 async def list_student_attachments(
